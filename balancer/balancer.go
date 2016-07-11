@@ -1,16 +1,17 @@
 package main
 
 import (
-	"bytes"
+    "bytes"
 	"fmt"
-	"io"
+    "io"
 	"log"
 	"net"
 
+    "github.com/open-lambda/load-balancer/balancer/connPeek"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/transport"
+    "google.golang.org/grpc/transport"
 
 	pb "google.golang.org/grpc/examples/helloworld/helloworld"
 )
@@ -40,43 +41,8 @@ func runServer() {
 	s.Serve(lis)
 }
 
-func runInnerServer(buf io.Reader, inConn net.Conn) {
-	lis, err := net.Listen("tcp", innerPort)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	for {
-		conn, err := lis.Accept()
-		if err != nil {
-			panic("oh no!")
-		}
-
-		st, err := transport.NewServerTransport("http2", conn, 100, nil)
-		st.HandleStreams(func(stream *transport.Stream) {
-			// Get method name
-			name := stream.Method()
-			fmt.Printf("method from inside lb: %v\n", name)
-
-			// TODO: Will need to choose a backend here based on name
-
-			// Dial up chosen server & copy contents over
-			outConn, err := net.Dial("tcp", "localhost"+port2)
-
-			if err != nil {
-				panic("oh no!")
-			}
-
-			// Copy things through back to client
-			go io.Copy(outConn, buf)
-			go io.Copy(inConn, outConn)
-		})
-
-	}
-}
-
 func runBalancer() {
-	lis, err := net.Listen("tcp", port1)
+	lis, err := net.Listen("tcp", "localhost" + port1)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -87,26 +53,34 @@ func runBalancer() {
 			panic("oh no!")
 		}
 
-		// Need a multiwriter to both read input & pass it along?
-		var buf1 bytes.Buffer
-		//w := io.Writer(&buf1)
-		io.Copy(&buf1, conn1)
-        fmt.Println("Made it here!")
-        var r1, r2 = bytes.NewReader(buf1.Bytes()), bytes.NewReader(buf1.Bytes())
+		// Will need access to buf later for proxying
+        var buf bytes.Buffer
+        r := io.TeeReader(conn1, &buf)
 
-		// Start intermediate server to peek, choose and forward
-		go runInnerServer(r1, conn1)
+        // Using conn to peek at the method name w/o affecting buf
+        var conn net.Conn = &connPeek.ReaderConn{Reader: r, Conn: conn1}
+        st, err := transport.NewServerTransport("http2", conn, 100, nil)
+        if err != nil {
+            panic(err.Error())
+        }
 
-		// Connect to inner server
-		innerConn, err := net.Dial("tcp", "localhost"+innerPort)
+        st.HandleStreams(func(stream *transport.Stream) {
+            // Get method name
+            name := stream.Method()
+            fmt.Printf("method from inside lb: %v\n", name)
 
-		// Yeah, this is hacky, likely a cleaner way to do is w/ channels
-		for ; err != nil; innerConn, err = net.Dial("tcp", "localhost"+innerPort) {
-			fmt.Println("Waiting for innerServer")
-		}
-		// Forward things onto the inner server
-		go io.Copy(innerConn, r2)
-	}
+            // Make decision about which backend to connect to
+            conn2, err := net.Dial("tcp", "localhost" + port2)
+            if err != nil {
+                panic(err.Error())
+            }
+
+            // Proxy between client & chosen server
+            go io.Copy(conn1, conn2)
+            go io.Copy(conn2, &buf)
+        })
+
+    }
 }
 
 func runClient() {
