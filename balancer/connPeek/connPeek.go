@@ -1,14 +1,14 @@
 package connPeek
 
 import (
+	"io"
 	"net"
 	"time"
-	"io"
 )
 
 type ReaderConn struct {
 	Reader io.Reader
-    Conn   net.Conn
+	Conn   net.Conn
 }
 
 func (r *ReaderConn) Read(b []byte) (n int, err error) {
@@ -16,7 +16,7 @@ func (r *ReaderConn) Read(b []byte) (n int, err error) {
 }
 
 func (r *ReaderConn) Write(b []byte) (n int, err error) {
-    return len(b), nil
+	return len(b), nil
 }
 
 func (r *ReaderConn) Close() error {
@@ -24,11 +24,11 @@ func (r *ReaderConn) Close() error {
 }
 
 func (r *ReaderConn) LocalAddr() net.Addr {
-    return r.Conn.LocalAddr()
+	return r.Conn.LocalAddr()
 }
 
 func (r *ReaderConn) RemoteAddr() net.Addr {
-    return r.Conn.RemoteAddr()
+	return r.Conn.RemoteAddr()
 }
 
 func (r *ReaderConn) SetDeadline(t time.Time) error {

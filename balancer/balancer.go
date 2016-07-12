@@ -1,25 +1,25 @@
 package main
 
 import (
-    "bytes"
-    "container/list"
+	"bytes"
+	"container/list"
 	"fmt"
-    "io"
+	"io"
 	"log"
 	"net"
 
-    "github.com/open-lambda/load-balancer/balancer/connPeek"
-    "github.com/open-lambda/load-balancer/balancer/serverPick"
+	"github.com/open-lambda/load-balancer/balancer/connPeek"
+	"github.com/open-lambda/load-balancer/balancer/serverPick"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/credentials"
-    "google.golang.org/grpc/transport"
+	"google.golang.org/grpc/transport"
 
 	pb "google.golang.org/grpc/examples/helloworld/helloworld"
 )
 
 const (
-	lbAddr    = "localhost:50051" // balancer address
+	lbAddr = "localhost:50051" // balancer address
 )
 
 // server is used to implement helloworld.GreeterServer.
@@ -54,34 +54,34 @@ func runBalancer(address string, chooser serverPick.ServerPicker) {
 		}
 
 		// Will need access to buf later for proxying
-        var buf bytes.Buffer
-        r := io.TeeReader(conn1, &buf)
+		var buf bytes.Buffer
+		r := io.TeeReader(conn1, &buf)
 
-        // Using conn to peek at the method name w/o affecting buf
-        var conn net.Conn = &connPeek.ReaderConn{Reader: r, Conn: conn1}
-        st, err := transport.NewServerTransport("http2", conn, 100, nil)
-        if err != nil {
-            panic(err.Error())
-        }
+		// Using conn to peek at the method name w/o affecting buf
+		var conn net.Conn = &connPeek.ReaderConn{Reader: r, Conn: conn1}
+		st, err := transport.NewServerTransport("http2", conn, 100, nil)
+		if err != nil {
+			panic(err.Error())
+		}
 
-        st.HandleStreams(func(stream *transport.Stream) {
-            // Get method name
-            name := stream.Method()
+		st.HandleStreams(func(stream *transport.Stream) {
+			// Get method name
+			name := stream.Method()
 
-            // Make decision about which backend to connect to
-            servers, err := chooser.ChooseServers(name, *list.New())
-            fmt.Printf("Server chosen to run on: %v\n", servers[0])
-            conn2, err := net.Dial("tcp", servers[0])
-            if err != nil {
-                panic(err.Error())
-            }
+			// Make decision about which backend to connect to
+			servers, err := chooser.ChooseServers(name, *list.New())
+			fmt.Printf("Server chosen to run on: %v\n", servers[0])
+			conn2, err := net.Dial("tcp", servers[0])
+			if err != nil {
+				panic(err.Error())
+			}
 
-            // Proxy between client & chosen server
-            go io.Copy(conn1, conn2)
-            go io.Copy(conn2, &buf)
-        })
+			// Proxy between client & chosen server
+			go io.Copy(conn1, conn2)
+			go io.Copy(conn2, &buf)
+		})
 
-    }
+	}
 }
 
 func runClient(address string) {
@@ -103,11 +103,11 @@ func runClient(address string) {
 }
 
 func main() {
-    servers := []string{"localhost:5052", "localhost:5053", "localhost:5054"}
-    for i := 0; i < len(servers); i++ {
-        go runServer(servers[i])
-    }
-    chooser := serverPick.NewRandPicker(servers)
+	servers := []string{"localhost:5052", "localhost:5053", "localhost:5054"}
+	for i := 0; i < len(servers); i++ {
+		go runServer(servers[i])
+	}
+	chooser := serverPick.NewRandPicker(servers)
 	go runBalancer(lbAddr, chooser)
 	runClient(lbAddr)
 }
