@@ -2,12 +2,14 @@ package main
 
 import (
     "bytes"
+    "container/list"
 	"fmt"
     "io"
 	"log"
 	"net"
 
     "github.com/open-lambda/load-balancer/balancer/connPeek"
+    "github.com/open-lambda/load-balancer/balancer/serverPick"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/credentials"
@@ -17,9 +19,7 @@ import (
 )
 
 const (
-	port1     = ":50051" // balancer
-	port2     = ":50052" // server
-	innerPort = ":50053" // port for intermediate connection to listen to
+	lbAddr    = "localhost:50051" // balancer address
 )
 
 // server is used to implement helloworld.GreeterServer.
@@ -31,8 +31,8 @@ func (s *server) SayHello(ctx context.Context, in *pb.HelloRequest) (*pb.HelloRe
 	return &pb.HelloReply{Message: "Hi " + in.Name}, nil
 }
 
-func runServer() {
-	lis, err := net.Listen("tcp", port2)
+func runServer(address string) {
+	lis, err := net.Listen("tcp", address)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -41,8 +41,8 @@ func runServer() {
 	s.Serve(lis)
 }
 
-func runBalancer() {
-	lis, err := net.Listen("tcp", "localhost" + port1)
+func runBalancer(address string, chooser serverPick.ServerPicker) {
+	lis, err := net.Listen("tcp", address)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -67,10 +67,11 @@ func runBalancer() {
         st.HandleStreams(func(stream *transport.Stream) {
             // Get method name
             name := stream.Method()
-            fmt.Printf("method from inside lb: %v\n", name)
 
             // Make decision about which backend to connect to
-            conn2, err := net.Dial("tcp", "localhost" + port2)
+            servers, err := chooser.ChooseServers(name, *list.New())
+            fmt.Printf("Server chosen to run on: %v\n", servers[0])
+            conn2, err := net.Dial("tcp", servers[0])
             if err != nil {
                 panic(err.Error())
             }
@@ -83,9 +84,9 @@ func runBalancer() {
     }
 }
 
-func runClient() {
+func runClient(address string) {
 	// Set up a connection to the server.
-	conn, err := grpc.Dial("localhost"+port1, grpc.WithInsecure())
+	conn, err := grpc.Dial(address, grpc.WithInsecure())
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
@@ -102,7 +103,11 @@ func runClient() {
 }
 
 func main() {
-	go runServer()
-	go runBalancer()
-	runClient()
+    servers := []string{"localhost:5052", "localhost:5053", "localhost:5054"}
+    for i := 0; i < len(servers); i++ {
+        go runServer(servers[i])
+    }
+    chooser := serverPick.NewRandPicker(servers)
+	go runBalancer(lbAddr, chooser)
+	runClient(lbAddr)
 }
