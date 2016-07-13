@@ -13,15 +13,15 @@ type ServerPicker interface {
 
 // Always picks first two servers
 type FirstTwo struct {
-    servers []string
+	servers []string
 }
 
 func NewFirstTwo(servers []string) FirstTwo {
-    return *&FirstTwo{servers: servers}
+	return *&FirstTwo{servers: servers}
 }
 
 func (ft FirstTwo) ChooseServers(name string, params list.List) (servers []string, err error) {
-    return []string{ft.servers[0], ft.servers[1]}, nil
+	return []string{ft.servers[0], ft.servers[1]}, nil
 }
 
 func (ft FirstTwo) RegisterTimes(servers []string, times []float64) {

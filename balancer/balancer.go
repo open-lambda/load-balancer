@@ -7,8 +7,8 @@ import (
 	"io"
 	"log"
 	"net"
-    "sync"
-    "time"
+	"sync"
+	"time"
 
 	"github.com/open-lambda/load-balancer/balancer/connPeek"
 	"github.com/open-lambda/load-balancer/balancer/serverPick"
@@ -72,48 +72,48 @@ func runBalancer(address string, chooser serverPick.ServerPicker) {
 
 			// Make decision about which backend(s) to connect to
 			servers, err := chooser.ChooseServers(name, *list.New())
-            if err != nil {
-                panic(err.Error())
-            }
+			if err != nil {
+				panic(err.Error())
+			}
 
-            // Call function on every chosen backend
-            pbuf := &buf
-            done := false
-            var cpLock sync.Mutex
-            for i := 0; i < len(servers); i++ {
-                // Will have to split connection across every backend
-                var buf2 bytes.Buffer
-                reader := io.TeeReader(pbuf, &buf2)
+			// Call function on every chosen backend
+			pbuf := &buf
+			done := false
+			var cpLock sync.Mutex
+			for i := 0; i < len(servers); i++ {
+				// Will have to split connection across every backend
+				var buf2 bytes.Buffer
+				reader := io.TeeReader(pbuf, &buf2)
 
-                // Submit requests in parallel and choose the winner
-                go func (j int, r2 io.Reader) {
-                    fmt.Printf("Server chosen to run on: %v\n", servers[j])
-                    // Dial given server number
-                    conn2, err := net.Dial("tcp", servers[j])
-                    defer conn2.Close()
-                    if err != nil {
-                        panic(err.Error())
-                    }
+				// Submit requests in parallel and choose the winner
+				go func(j int, r2 io.Reader) {
+					fmt.Printf("Server chosen to run on: %v\n", servers[j])
+					// Dial given server number
+					conn2, err := net.Dial("tcp", servers[j])
+					defer conn2.Close()
+					if err != nil {
+						panic(err.Error())
+					}
 
-                    // Run function on chosen server
-                    io.Copy(conn2, r2)
-                    if j == 0 {
-                        time.Sleep(time.Minute)
-                    }
+					// Run function on chosen server
+					io.Copy(conn2, r2)
+					if j == 0 {
+						time.Sleep(time.Minute)
+					}
 
-                    // Copy response back to client only if this backend "won"
-                    cpLock.Lock()
-                    if !done {
-                        io.Copy(conn1, conn2)
-                        done = true
-                    }
-                    cpLock.Unlock()
+					// Copy response back to client only if this backend "won"
+					cpLock.Lock()
+					if !done {
+						io.Copy(conn1, conn2)
+						done = true
+					}
+					cpLock.Unlock()
 
-                }(i, reader)
+				}(i, reader)
 
-                // Set pbuf to next buffer so we can split connection again
-                pbuf = &buf2
-            }
+				// Set pbuf to next buffer so we can split connection again
+				pbuf = &buf2
+			}
 		})
 
 	}

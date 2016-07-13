@@ -20,7 +20,7 @@ func (r *ReaderConn) Write(b []byte) (n int, err error) {
 }
 
 func (r *ReaderConn) Close() error {
-    return r.Conn.Close()
+	return r.Conn.Close()
 }
 
 func (r *ReaderConn) LocalAddr() net.Addr {
