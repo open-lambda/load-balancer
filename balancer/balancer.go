@@ -5,8 +5,10 @@ import (
 	"container/list"
 	"fmt"
 	"io"
+	"os"
 	"log"
 	"net"
+	"encoding/json"
 
 	"github.com/open-lambda/load-balancer/balancer/connPeek"
 	"github.com/open-lambda/load-balancer/balancer/serverPick"
@@ -20,6 +22,10 @@ import (
 const (
 	lbAddr = "localhost:50051" // balancer address
 )
+
+type Config struct {
+	Servers []string
+}
 
 // server is used to implement helloworld.GreeterServer.
 type server struct{}
@@ -105,16 +111,30 @@ func runClient(address string) {
 	log.Printf("Greeting: %s", r.Message)
 }
 
-func main() {
-	var servers []string
-	for i := 0; i < 3; i++ {
-		server := "localhost:" + fmt.Sprintf("%v", i+5052)
-		go runServer(server)
-		servers = append(servers, server)
+func readConfig (filename string) (*Config) {
+	fd, err := os.Open("conf.json")
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	chooser := serverPick.NewFirstTwo(servers)
-	//chooser := serverPick.NewRandPicker(servers)
+	decoder := json.NewDecoder(fd)
+	conf := Config{}
+
+	err = decoder.Decode(&conf)
+	if err != nil {
+		log.Fatalf("could not decode config file: %v", err)
+	}
+
+	return &conf
+}
+
+func main() {
+	conf := readConfig("conf.json")
+	for i := 0; i < len(conf.Servers); i++ {
+		go runServer(conf.Servers[i])
+	}
+
+	chooser := serverPick.NewFirstTwo(conf.Servers)
 	go runBalancer(lbAddr, chooser)
 	for i := 0; ; i++ {
 		fmt.Printf("Client's been run %v time(s)\n", i)
