@@ -15,6 +15,8 @@ import (
 	"golang.org/x/oauth2"
 )
 
+const CLIENT_ITERATIONS = 10000
+
 const BASE_IMAGE = "ubuntu-14-04-x64"
 const NUM_CLIENTS = 1
 
@@ -22,12 +24,12 @@ const SERVER_BINARY = "runserver"
 const BALANCER_BINARY = "runbalancer"
 const CLIENT_BINARY = "runclient"
 
-const SERVER_BINARY_PATH = "/runserver"
-const CLIENT_BINARY_PATH = "/runclient"
-const BALANCER_BINARY_PATH = "/runbalancer"
-
 const BALANCER_CONF = "balancer.conf"
 const CLIENT_CONF = "client.conf"
+const SSH_CONF = "ssh.conf"
+
+const BALANCER_PORT = "50051"
+const SERVER_PORT = "8080"
 
 type DropletConfig struct {
 	Region string
@@ -43,10 +45,12 @@ type TestConfig struct {
 
 type LBConfig struct {
 	Servers []string
+	LBPort  string
 }
 
 type ClientConfig struct {
-	Balancer string
+	LBAddr     string
+	Iterations int
 }
 
 type TokenSource struct {
@@ -67,9 +71,11 @@ func RunClient(client *godo.Client, droplet godo.Droplet) string {
 	return ""
 }
 
-// TODO combine these two into a generic
-func WriteClientConfig(filename string, balancer string) {
-	conf := ClientConfig{Balancer: balancer}
+func WriteClientConfig(filename string, balancer_ip string) {
+	conf := ClientConfig{
+		LBAddr:     fmt.Sprintf("%s:%s", balancer_ip, BALANCER_PORT),
+		Iterations: CLIENT_ITERATIONS,
+	}
 
 	json, err := json.Marshal(conf)
 	check(err)
@@ -81,7 +87,14 @@ func WriteClientConfig(filename string, balancer string) {
 }
 
 func WriteLBConfig(filename string, servers []string) {
-	conf := LBConfig{Servers: servers}
+	formatted := make([]string, len(servers))
+	for k := range servers {
+		formatted[k] = fmt.Sprintf("%s:%s", servers[k], SERVER_PORT)
+	}
+	conf := LBConfig{
+		Servers: formatted,
+		LBPort:  BALANCER_PORT,
+	}
 
 	json, err := json.Marshal(conf)
 	check(err)
@@ -92,29 +105,26 @@ func WriteLBConfig(filename string, servers []string) {
 	return
 }
 
-// TODO remove redundancy here
-func EXEC(localpath string, remotepath string, ip string) {
-	cmd := exec.Command("ssh", fmt.Sprintf("root@%s", ip))
+func EXEC(name string, ip string, dir string) {
+	sshconf := filepath.Join(dir, SSH_CONF)
+	cmd := exec.Command("ssh", "-F", sshconf, fmt.Sprintf("root@%s", ip), fmt.Sprintf("\"sh -c 'nohup ./%s > /dev/null 2>&1 &'\"", name))
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+	fmt.Printf("%s\n", cmd.Path)
+	fmt.Printf("%v\n", cmd.Args)
 	err := cmd.Run()
 	check(err)
 }
 
-func SCP(localpath string, remotepath string, ip string) {
-	cmd := exec.Command("scp", localpath, fmt.Sprintf("root@%s:%s", ip, remotepath))
+func SCP(name string, ip string, dir string) {
+	sshconf := filepath.Join(dir, SSH_CONF)
+	cmd := exec.Command("scp", "-F", sshconf, filepath.Join(dir, name), fmt.Sprintf("root@%s:./%s", ip, name))
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+	fmt.Printf("%s\n", cmd.Path)
+	fmt.Printf("%v\n", cmd.Args)
 	err := cmd.Run()
 	check(err)
-}
-
-func SCPAndExec(localpath string, remotepath string, ip string) {
-	cmd := exec.Command("scp", localpath, fmt.Sprintf("root@%s:%s", ip, remotepath))
-	err := cmd.Run()
-	check(err)
-
-	cmd = exec.Command("ssh", fmt.Sprintf("root@%s", ip), remotepath)
-	err = cmd.Run()
-	check(err)
-
-	return
 }
 
 func WaitForDroplet(client *godo.Client, id int) string {
@@ -236,6 +246,7 @@ func check(err error) {
 	return
 }
 
+// IF SSH IS FAILING FOR SOME REASON CHANGE PERMISSIONS ON YOUR PRIVATE KEY TO 600
 // TODO defer deleting all droplets to make sure they're always deleted
 func main() {
 	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
@@ -320,54 +331,54 @@ func main() {
 	fmt.Println("Writing client configuration...")
 	WriteClientConfig(filepath.Join(dir, CLIENT_CONF), balancer_ip)
 
-	// TODO wait awhile for ssh to come up
+	client_wg.Wait()
+
+	fmt.Println("Waiting for SSH to come up...")
+	time.Sleep(30 * time.Second)
+
 	// scp runserver binary for servers and run them
+	fmt.Println("Copying and running runserver binaries...")
 	for k := range server_ips {
 		server_wg.Add(1)
 		go func() {
 			defer server_wg.Done()
-			SCP(filepath.Join(dir, SERVER_BINARY), SERVER_BINARY_PATH, server_ips[k])
-			EXEC(filepath.Join(dir, SERVER_BINARY), SERVER_BINARY_PATH, server_ips[k])
+			SCP(SERVER_BINARY, server_ips[k], dir)
+			EXEC(SERVER_BINARY, server_ips[k], dir)
 		}()
 	}
 
-	SCP(filepath.Join(dir, BALANCER_CONF), BALANCER_BINARY_PATH, balancer_ip)
-	EXEC(filepath.Join(dir, BALANCER_BINARY), BALANCER_BINARY_PATH, balancer_ip)
+	fmt.Println("Copying runbalancer binaries and config files...")
+	SCP(BALANCER_CONF, balancer_ip, dir)
+	SCP(BALANCER_BINARY, balancer_ip, dir)
 
-	client_wg.Wait()
+	server_wg.Wait()
+
+	fmt.Println("Running loadbalancer...")
+	EXEC(BALANCER_BINARY, balancer_ip, dir)
 
 	// scp client config files
+	fmt.Println("Copying client binaries and config files...")
 	for k := range client_ips {
 		client_wg.Add(1)
 		go func() {
 			defer client_wg.Done()
-			SCP(filepath.Join(dir, CLIENT_CONF), CLIENT_BINARY_PATH, client_ips[k])
-		}()
-	}
-
-	client_wg.Wait()
-	// scp and run client binary
-	for k := range client_ips {
-		client_wg.Add(1)
-		go func() {
-			defer client_wg.Done()
-			SCP(filepath.Join(dir, CLIENT_CONF), CLIENT_BINARY_PATH, client_ips[k])
+			SCP(CLIENT_CONF, client_ips[k], dir)
+			SCP(CLIENT_BINARY, client_ips[k], dir)
 		}()
 	}
 
 	client_wg.Wait()
 
-	// TODO run clients (with a timeout)
-
+	// run clients
+	// TODO add timeout?
 	fmt.Println("Running clients...")
-	for k := range clients {
+	for k := range client_ips {
 		test_wg.Add(1)
 		go func() {
 			defer test_wg.Done()
-			RunClient(client, clients[k])
+			EXEC(CLIENT_BINARY, client_ips[k], dir)
 		}()
 	}
 
-	// TODO delete droplets
 	test_wg.Wait()
 }
