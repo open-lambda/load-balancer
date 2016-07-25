@@ -15,8 +15,6 @@ import (
 	"golang.org/x/oauth2"
 )
 
-const CLIENT_ITERATIONS = 10000
-
 const BASE_IMAGE = "ubuntu-14-04-x64"
 const NUM_CLIENTS = 1
 
@@ -38,9 +36,10 @@ type DropletConfig struct {
 }
 
 type TestConfig struct {
-	Servers   []DropletConfig
-	Clients   []DropletConfig
-	Balancers []DropletConfig
+	Servers    []DropletConfig
+	Clients    []DropletConfig
+	Balancers  []DropletConfig
+	Iterations int
 }
 
 type LBConfig struct {
@@ -71,10 +70,10 @@ func RunClient(client *godo.Client, droplet godo.Droplet) string {
 	return ""
 }
 
-func WriteClientConfig(filename string, balancer_ip string) {
+func WriteClientConfig(filename string, balancer_ip string, iterations int) {
 	conf := ClientConfig{
 		LBAddr:     fmt.Sprintf("%s:%s", balancer_ip, BALANCER_PORT),
-		Iterations: CLIENT_ITERATIONS,
+		Iterations: iterations,
 	}
 
 	json, err := json.Marshal(conf)
@@ -109,7 +108,7 @@ func EXEC(name string, ip string, dir string) {
 	sshconf := filepath.Join(dir, SSH_CONF)
 	//cmd := exec.Command("ssh", "-n", "-F", sshconf, fmt.Sprintf("root@%s", ip), fmt.Sprintf("\"sh -c 'nohup ./%s > /dev/null 2>&1 &'\"", name))
 	cmd := exec.Command("ssh", "-F", sshconf, fmt.Sprintf("root@%s", ip), fmt.Sprintf("./%s", name))
-	cmd.Stderr = os.Stderr
+	//cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
 	fmt.Printf("%v\n", cmd.Args)
 	err := cmd.Run()
@@ -119,7 +118,7 @@ func EXEC(name string, ip string, dir string) {
 func SCP(name string, ip string, dir string) {
 	sshconf := filepath.Join(dir, SSH_CONF)
 	cmd := exec.Command("scp", "-F", sshconf, filepath.Join(dir, name), fmt.Sprintf("root@%s:./%s", ip, name))
-	cmd.Stderr = os.Stderr
+	//cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
 	fmt.Printf("%v\n", cmd.Args)
 	err := cmd.Run()
@@ -320,7 +319,7 @@ func main() {
 	// write config for clients
 	balancer_wg.Wait()
 	fmt.Println("Writing client configuration...")
-	WriteClientConfig(filepath.Join(dir, CLIENT_CONF), balancer_ip)
+	WriteClientConfig(filepath.Join(dir, CLIENT_CONF), balancer_ip, conf.Iterations)
 
 	fmt.Println("Waiting for SSH to come up...")
 	time.Sleep(30 * time.Second)
@@ -377,13 +376,13 @@ func main() {
 	}
 
 	//server_wg.Wait()
-	time.Sleep(1 * time.Second) // TODO fix this
+	time.Sleep(5 * time.Second) // TODO fix this
 
 	// run loadbalancer
 	fmt.Println("Running loadbalancer...")
 	go EXEC(BALANCER_BINARY, balancer_ip, dir)
 
-	time.Sleep(1 * time.Second) // TODO fix this
+	time.Sleep(5 * time.Second) // TODO fix this
 
 	// run clients
 	// TODO add timeout?
