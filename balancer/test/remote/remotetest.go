@@ -107,7 +107,8 @@ func WriteLBConfig(filename string, servers []string) {
 
 func EXEC(name string, ip string, dir string) {
 	sshconf := filepath.Join(dir, SSH_CONF)
-	cmd := exec.Command("ssh", "-F", sshconf, fmt.Sprintf("root@%s", ip), fmt.Sprintf("\"sh -c 'nohup ./%s > /dev/null 2>&1 &'\"", name))
+	cmd := exec.Command("ssh", "-n", "-F", sshconf, fmt.Sprintf("root@%s", ip), fmt.Sprintf("\"sh -c 'nohup ./%s > /dev/null 2>&1 &'\"", name))
+	//cmd := exec.Command("ssh", "-F", sshconf, fmt.Sprintf("root@%s", ip), fmt.Sprintf("./%s", name))
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
 	fmt.Printf("%s\n", cmd.Path)
@@ -146,35 +147,21 @@ func WaitForDroplet(client *godo.Client, id int) string {
 func DropletsFromConfig(client *godo.Client, keys []godo.DropletCreateSSHKey, conf []DropletConfig, name string) []godo.Droplet {
 	servers := make([]godo.Droplet, 0)
 	for k := range conf {
-		if conf[k].Number == 1 {
-			request := &godo.DropletCreateRequest{
-				Name:   fmt.Sprintf("test-%s-%d", name, k),
-				Region: conf[k].Region,
-				Size:   conf[k].Size,
-				Image: godo.DropletCreateImage{
-					Slug: BASE_IMAGE,
-				},
-				SSHKeys: keys,
-			}
-			servers = append(servers, []godo.Droplet{*CreateDroplet(client, request)}...)
-
-		} else {
-			names := make([]string, conf[k].Number)
-			for i := 0; i < conf[k].Number; i++ {
-				names[i] = fmt.Sprintf("test-%s-%d-%d", name, k, i)
-			}
-
-			request := &godo.DropletMultiCreateRequest{
-				Names:  names,
-				Region: conf[k].Region,
-				Size:   conf[k].Size,
-				Image: godo.DropletCreateImage{
-					Slug: BASE_IMAGE,
-				},
-				SSHKeys: keys,
-			}
-			servers = append(servers, CreateDroplets(client, request)...)
+		names := make([]string, conf[k].Number)
+		for i := 0; i < conf[k].Number; i++ {
+			names[i] = fmt.Sprintf("test-%s-%d-%d", name, k, i)
 		}
+		request := &godo.DropletMultiCreateRequest{
+			Names:  names,
+			Region: conf[k].Region,
+			Size:   conf[k].Size,
+			Image: godo.DropletCreateImage{
+				Slug: BASE_IMAGE,
+			},
+			SSHKeys: keys,
+		}
+		newservers := CreateDroplets(client, request)
+		servers = append(servers, newservers...)
 
 	}
 
@@ -246,8 +233,6 @@ func check(err error) {
 	return
 }
 
-// IF SSH IS FAILING FOR SOME REASON CHANGE PERMISSIONS ON YOUR PRIVATE KEY TO 600
-// TODO defer deleting all droplets to make sure they're always deleted
 func main() {
 	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 	check(err)
@@ -285,10 +270,10 @@ func main() {
 
 		// start goroutines to wait for servers
 		server_wg.Add(1)
-		go func() {
+		go func(id int, idx int) {
 			defer server_wg.Done()
-			server_ips[k] = WaitForDroplet(client, servers[k].ID)
-		}()
+			server_ips[idx] = WaitForDroplet(client, id)
+		}(servers[k].ID, k)
 	}
 
 	// spin up droplet for load balancer
@@ -315,10 +300,10 @@ func main() {
 	client_ips := make([]string, len(clients))
 	for k := range clients {
 		client_wg.Add(1)
-		go func() {
+		go func(id int, idx int) {
 			defer client_wg.Done()
-			client_ips[k] = WaitForDroplet(client, clients[k].ID)
-		}()
+			client_ips[idx] = WaitForDroplet(client, id)
+		}(clients[k].ID, k)
 	}
 
 	// write config for the load balancer
@@ -340,11 +325,11 @@ func main() {
 	fmt.Println("Copying and running runserver binaries...")
 	for k := range server_ips {
 		server_wg.Add(1)
-		go func() {
+		go func(idx int) {
 			defer server_wg.Done()
-			SCP(SERVER_BINARY, server_ips[k], dir)
-			EXEC(SERVER_BINARY, server_ips[k], dir)
-		}()
+			SCP(SERVER_BINARY, server_ips[idx], dir)
+			EXEC(SERVER_BINARY, server_ips[idx], dir)
+		}(k)
 	}
 
 	fmt.Println("Copying runbalancer binaries and config files...")
@@ -360,11 +345,11 @@ func main() {
 	fmt.Println("Copying client binaries and config files...")
 	for k := range client_ips {
 		client_wg.Add(1)
-		go func() {
+		go func(idx int) {
 			defer client_wg.Done()
-			SCP(CLIENT_CONF, client_ips[k], dir)
-			SCP(CLIENT_BINARY, client_ips[k], dir)
-		}()
+			SCP(CLIENT_CONF, client_ips[idx], dir)
+			SCP(CLIENT_BINARY, client_ips[idx], dir)
+		}(k)
 	}
 
 	client_wg.Wait()
@@ -374,10 +359,10 @@ func main() {
 	fmt.Println("Running clients...")
 	for k := range client_ips {
 		test_wg.Add(1)
-		go func() {
+		go func(idx int) {
 			defer test_wg.Done()
-			EXEC(CLIENT_BINARY, client_ips[k], dir)
-		}()
+			EXEC(CLIENT_BINARY, client_ips[idx], dir)
+		}(k)
 	}
 
 	test_wg.Wait()
