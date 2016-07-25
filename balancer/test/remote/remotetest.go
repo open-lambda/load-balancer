@@ -29,7 +29,7 @@ const CLIENT_CONF = "client.conf"
 const SSH_CONF = "ssh.conf"
 
 const BALANCER_PORT = "50051"
-const SERVER_PORT = "8080"
+const SERVER_PORT = "50052"
 
 type DropletConfig struct {
 	Region string
@@ -107,11 +107,10 @@ func WriteLBConfig(filename string, servers []string) {
 
 func EXEC(name string, ip string, dir string) {
 	sshconf := filepath.Join(dir, SSH_CONF)
-	cmd := exec.Command("ssh", "-n", "-F", sshconf, fmt.Sprintf("root@%s", ip), fmt.Sprintf("\"sh -c 'nohup ./%s > /dev/null 2>&1 &'\"", name))
-	//cmd := exec.Command("ssh", "-F", sshconf, fmt.Sprintf("root@%s", ip), fmt.Sprintf("./%s", name))
+	//cmd := exec.Command("ssh", "-n", "-F", sshconf, fmt.Sprintf("root@%s", ip), fmt.Sprintf("\"sh -c 'nohup ./%s > /dev/null 2>&1 &'\"", name))
+	cmd := exec.Command("ssh", "-F", sshconf, fmt.Sprintf("root@%s", ip), fmt.Sprintf("./%s", name))
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
-	fmt.Printf("%s\n", cmd.Path)
 	fmt.Printf("%v\n", cmd.Args)
 	err := cmd.Run()
 	check(err)
@@ -122,7 +121,6 @@ func SCP(name string, ip string, dir string) {
 	cmd := exec.Command("scp", "-F", sshconf, filepath.Join(dir, name), fmt.Sprintf("root@%s:./%s", ip, name))
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
-	fmt.Printf("%s\n", cmd.Path)
 	fmt.Printf("%v\n", cmd.Args)
 	err := cmd.Run()
 	check(err)
@@ -257,6 +255,10 @@ func main() {
 	var client_wg sync.WaitGroup
 	var test_wg sync.WaitGroup
 
+	/*
+		<----- INITIALIZE DROPLETS ----->
+	*/
+
 	// spin up droplets for servers
 	fmt.Println("Initializing servers...")
 	servers := DropletsFromConfig(client, keys, conf.Servers, "server")
@@ -306,6 +308,10 @@ func main() {
 		}(clients[k].ID, k)
 	}
 
+	/*
+		<----- WRITE FILES ----->
+	*/
+
 	// write config for the load balancer
 	server_wg.Wait()
 	fmt.Println("Writing loadbalancer configuration...")
@@ -316,32 +322,30 @@ func main() {
 	fmt.Println("Writing client configuration...")
 	WriteClientConfig(filepath.Join(dir, CLIENT_CONF), balancer_ip)
 
-	client_wg.Wait()
-
 	fmt.Println("Waiting for SSH to come up...")
 	time.Sleep(30 * time.Second)
+	client_wg.Wait() // don't need to touch the client ips until we scp
 
-	// scp runserver binary for servers and run them
-	fmt.Println("Copying and running runserver binaries...")
+	/*
+		<----- COPY FILES ----->
+	*/
+
+	// scp runserver binary for servers
+	fmt.Println("Copying runserver binaries...")
 	for k := range server_ips {
 		server_wg.Add(1)
 		go func(idx int) {
 			defer server_wg.Done()
 			SCP(SERVER_BINARY, server_ips[idx], dir)
-			EXEC(SERVER_BINARY, server_ips[idx], dir)
 		}(k)
 	}
 
+	// scp runbalancer and config files for balancer
 	fmt.Println("Copying runbalancer binaries and config files...")
 	SCP(BALANCER_CONF, balancer_ip, dir)
 	SCP(BALANCER_BINARY, balancer_ip, dir)
 
-	server_wg.Wait()
-
-	fmt.Println("Running loadbalancer...")
-	EXEC(BALANCER_BINARY, balancer_ip, dir)
-
-	// scp client config files
+	// scp runclient and client config files
 	fmt.Println("Copying client binaries and config files...")
 	for k := range client_ips {
 		client_wg.Add(1)
@@ -352,7 +356,34 @@ func main() {
 		}(k)
 	}
 
+	server_wg.Wait()
 	client_wg.Wait()
+
+	/*
+		<----- RUN BINARIES ----->
+	*/
+
+	// run servers
+	fmt.Println("Running servers...")
+	for k := range server_ips {
+		go EXEC(SERVER_BINARY, server_ips[k], dir)
+		/*
+			server_wg.Add(1)
+			go func(idx int) {
+				defer server_wg.Done()
+				EXEC(SERVER_BINARY, server_ips[idx], dir)
+			}(k)
+		*/
+	}
+
+	//server_wg.Wait()
+	time.Sleep(1 * time.Second) // TODO fix this
+
+	// run loadbalancer
+	fmt.Println("Running loadbalancer...")
+	go EXEC(BALANCER_BINARY, balancer_ip, dir)
+
+	time.Sleep(1 * time.Second) // TODO fix this
 
 	// run clients
 	// TODO add timeout?
