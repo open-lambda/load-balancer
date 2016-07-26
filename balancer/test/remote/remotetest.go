@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,9 +26,23 @@ const CLIENT_BINARY = "runclient"
 const BALANCER_CONF = "balancer.conf"
 const CLIENT_CONF = "client.conf"
 const SSH_CONF = "ssh.conf"
+const TEST_OUTPUT = "test.out"
 
 const BALANCER_PORT = "50051"
 const SERVER_PORT = "50052"
+
+type ClientOutput struct {
+	Latencies  []int64
+	Avglatency float64
+	Region     string
+	Size       string
+	Name       string
+}
+
+type TestOutput struct {
+	Avglatency float64
+	Clients    []ClientOutput
+}
 
 type DropletConfig struct {
 	Region string
@@ -63,10 +79,35 @@ func (t *TokenSource) Token() (*oauth2.Token, error) {
 	return token, nil
 }
 
-func RunClient(client *godo.Client, droplet godo.Droplet) string {
-	_, err := droplet.PublicIPv4()
+func WriteTestOutput(filename string, latencies [][]int64, avglatencies []float64, clients []godo.Droplet) {
+	clientoutputs := make([]ClientOutput, len(avglatencies))
+	avglatency := 0.0
+	for k := range avglatencies {
+		clientoutputs[k] = ClientOutput{
+			Latencies:  latencies[k],
+			Avglatency: avglatencies[k],
+			Region:     clients[k].Region.String(),
+			Size:       clients[k].Size.String(),
+			Name:       clients[k].Name,
+		}
+		avglatency += avglatencies[k]
+	}
+
+	aggregateavg := avglatency / float64(len(avglatencies))
+	fmt.Printf("Average latency across all clients: \n%fns\n", aggregateavg)
+
+	testoutput := TestOutput{
+		Avglatency: aggregateavg,
+		Clients:    clientoutputs,
+	}
+
+	json, err := json.Marshal(testoutput)
 	check(err)
-	return ""
+
+	err = ioutil.WriteFile(filename, json, 0644)
+	check(err)
+
+	return
 }
 
 func WriteClientConfig(filename string, balancer_ip string, iterations int) {
@@ -103,25 +144,57 @@ func WriteLBConfig(filename string, servers []string) {
 	return
 }
 
-func EXEC(name string, ip string, dir string) {
-	sshconf := filepath.Join(dir, SSH_CONF)
-	//cmd := exec.Command("ssh", "-n", "-F", sshconf, fmt.Sprintf("root@%s", ip), fmt.Sprintf("\"sh -c 'nohup ./%s > /dev/null 2>&1 &'\"", name))
-	cmd := exec.Command("ssh", "-F", sshconf, fmt.Sprintf("root@%s", ip), fmt.Sprintf("./%s", name))
-	//cmd.Stderr = os.Stderr
-	cmd.Stdout = os.Stdout
-	fmt.Printf("%v\n", cmd.Args)
-	err := cmd.Run()
-	check(err)
+func ParseClientOutput(out string) ([]int64, float64) {
+	latencies := make([]int64, 0)
+	var avglatency float64
+
+	lines := strings.Split(out, "\n")
+	for k := range lines {
+		split := strings.Split(lines[k], ":")
+		if len(split) != 2 {
+			log.Panic("Client output incorrectly formatted")
+		}
+
+		switch split[0] {
+		case "latency":
+			latency, err := strconv.ParseInt(split[1], 10, 64)
+			check(err)
+
+			latencies = append(latencies, latency)
+
+		case "avglatency":
+			avglatency, err := strconv.ParseFloat(split[1], 64)
+			check(err)
+
+			return latencies, avglatency
+		}
+
+	}
+
+	log.Panic("Client output incorrectly formatted. Expected avglatency")
+	return latencies, avglatency
 }
 
-func SCP(name string, ip string, dir string) {
+func EXEC(binary string, ip string, dir string) string {
 	sshconf := filepath.Join(dir, SSH_CONF)
-	cmd := exec.Command("scp", "-F", sshconf, filepath.Join(dir, name), fmt.Sprintf("root@%s:./%s", ip, name))
-	//cmd.Stderr = os.Stderr
-	cmd.Stdout = os.Stdout
+	cmd := exec.Command("ssh", "-F", sshconf, fmt.Sprintf("root@%s", ip), fmt.Sprintf("./%s", binary))
 	fmt.Printf("%v\n", cmd.Args)
-	err := cmd.Run()
+
+	out, err := cmd.Output()
 	check(err)
+
+	return string(out)
+}
+
+func SCP(binary string, ip string, dir string) []byte {
+	sshconf := filepath.Join(dir, SSH_CONF)
+	cmd := exec.Command("scp", "-F", sshconf, filepath.Join(dir, binary), fmt.Sprintf("root@%s:./%s", ip, binary))
+	fmt.Printf("%v\n", cmd.Args)
+
+	out, err := cmd.Output()
+	check(err)
+
+	return out
 }
 
 func WaitForDroplet(client *godo.Client, id int) string {
@@ -164,14 +237,32 @@ func DropletsFromConfig(client *godo.Client, keys []godo.DropletCreateSSHKey, co
 	return servers
 }
 
-func DeleteDroplets(client *godo.Client, droplets []godo.Droplet) {
+func DeleteTestDroplets(client *godo.Client) {
+	droplets := GetAllDroplets(client)
+
 	for k := range droplets {
 		_, err := client.Droplets.Delete(droplets[k].ID)
+		if !strings.HasPrefix(droplets[k].Name, "lbtest-") {
+			continue
+		}
+
 		if err != nil {
 			log.Printf("Deletion of droplet %s failed. Please manually destroy it.", droplets[k].Name)
 		}
 	}
 	return
+}
+
+func GetAllDroplets(client *godo.Client) []godo.Droplet {
+	options := &godo.ListOptions{
+		Page:    1,
+		PerPage: 200,
+	}
+
+	droplets, _, err := client.Droplets.List(options)
+	check(err)
+
+	return droplets
 }
 
 func CreateDroplets(client *godo.Client, request *godo.DropletMultiCreateRequest) []godo.Droplet {
@@ -223,7 +314,7 @@ func GetKeys(client *godo.Client) []godo.DropletCreateSSHKey {
 
 func check(err error) {
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	return
@@ -235,7 +326,7 @@ func main() {
 
 	pat := os.Getenv("DO_AUTHENTICATION_TOKEN")
 	if pat == "" {
-		log.Fatal("DO_AUTHENTICATION_TOKEN environment variable not set")
+		log.Panic("DO_AUTHENTICATION_TOKEN environment variable not set")
 	}
 
 	tokenSource := &TokenSource{
@@ -243,6 +334,7 @@ func main() {
 	}
 	oauthClient := oauth2.NewClient(oauth2.NoContext, tokenSource)
 	client := godo.NewClient(oauthClient)
+	defer DeleteTestDroplets(client)
 
 	keys := GetKeys(client)
 
@@ -260,14 +352,9 @@ func main() {
 	// spin up droplets for servers
 	fmt.Println("Initializing servers...")
 	servers := DropletsFromConfig(client, keys, conf.Servers, "server")
-	defer DeleteDroplets(client, servers)
 
 	server_ips := make([]string, len(servers))
 	for k := range servers {
-		ip, err := servers[k].PublicIPv4()
-		check(err)
-		server_ips[k] = ip
-
 		// start goroutines to wait for servers
 		server_wg.Add(1)
 		go func(id int, idx int) {
@@ -280,7 +367,6 @@ func main() {
 	// TODO clean this up to not use [0]
 	fmt.Println("Initializing loadbalancer...")
 	balancers := DropletsFromConfig(client, keys, conf.Balancers, "loadbalancer")
-	defer DeleteDroplets(client, balancers)
 	balancer := balancers[0]
 
 	// start goroutine to wait for balancer
@@ -294,7 +380,6 @@ func main() {
 	// spin up droplets for clients
 	fmt.Println("Initializing clients...")
 	clients := DropletsFromConfig(client, keys, conf.Clients, "client")
-	defer DeleteDroplets(client, clients)
 
 	// start goroutines to wait for clients
 	client_ips := make([]string, len(clients))
@@ -320,9 +405,9 @@ func main() {
 	fmt.Println("Writing client configuration...")
 	WriteClientConfig(filepath.Join(dir, CLIENT_CONF), balancer_ip, conf.Iterations)
 
+	client_wg.Wait()
 	fmt.Println("Waiting for SSH to come up...")
 	time.Sleep(30 * time.Second)
-	client_wg.Wait() // don't need to touch the client ips until we scp
 
 	/*
 		<----- COPY FILES ----->
@@ -332,10 +417,10 @@ func main() {
 	fmt.Println("Copying runserver binaries...")
 	for k := range server_ips {
 		server_wg.Add(1)
-		go func(idx int) {
+		go func(ip string) {
 			defer server_wg.Done()
-			SCP(SERVER_BINARY, server_ips[idx], dir)
-		}(k)
+			SCP(SERVER_BINARY, ip, dir)
+		}(server_ips[k])
 	}
 
 	// scp runbalancer and config files for balancer
@@ -347,11 +432,11 @@ func main() {
 	fmt.Println("Copying client binaries and config files...")
 	for k := range client_ips {
 		client_wg.Add(1)
-		go func(idx int) {
+		go func(ip string) {
 			defer client_wg.Done()
-			SCP(CLIENT_CONF, client_ips[idx], dir)
-			SCP(CLIENT_BINARY, client_ips[idx], dir)
-		}(k)
+			SCP(CLIENT_CONF, ip, dir)
+			SCP(CLIENT_BINARY, ip, dir)
+		}(client_ips[k])
 	}
 
 	server_wg.Wait()
@@ -365,34 +450,37 @@ func main() {
 	fmt.Println("Running servers...")
 	for k := range server_ips {
 		go EXEC(SERVER_BINARY, server_ips[k], dir)
-		/*
-			server_wg.Add(1)
-			go func(idx int) {
-				defer server_wg.Done()
-				EXEC(SERVER_BINARY, server_ips[idx], dir)
-			}(k)
-		*/
 	}
 
-	//server_wg.Wait()
-	time.Sleep(5 * time.Second) // TODO fix this
+	time.Sleep(3 * time.Second) // TODO fix this
 
 	// run loadbalancer
 	fmt.Println("Running loadbalancer...")
 	go EXEC(BALANCER_BINARY, balancer_ip, dir)
 
-	time.Sleep(5 * time.Second) // TODO fix this
+	time.Sleep(3 * time.Second) // TODO fix this
 
 	// run clients
-	// TODO add timeout?
 	fmt.Println("Running clients...")
+	latencies := make([][]int64, len(clients))
+	avglatencies := make([]float64, len(clients))
 	for k := range client_ips {
 		test_wg.Add(1)
-		go func(idx int) {
+		go func(ip string, idx int) {
 			defer test_wg.Done()
-			EXEC(CLIENT_BINARY, client_ips[idx], dir)
-		}(k)
+			latencies[idx], avglatencies[idx] = ParseClientOutput(EXEC(CLIENT_BINARY, ip, dir))
+		}(client_ips[k], k)
 	}
 
 	test_wg.Wait()
+	// TODO write the test output to a file
+	avg := 0.0
+	for k := range clients {
+		avg += avglatencies[k]
+	}
+
+	fmt.Println("Writing test output...")
+	WriteTestOutput(filepath.Join(dir, TEST_OUTPUT), latencies, avglatencies, clients)
+
+	fmt.Println("Testing complete.")
 }
