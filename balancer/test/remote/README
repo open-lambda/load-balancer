@@ -1,0 +1,17 @@
+Remotetest uses the DigitalOcean API to run a test for the loadbalancer with itself, servers, and clients all running on independent droplets.
+
+The region, size, and number of servers and clients can be specified in test.conf, along with the number of iterations for each client process to run.
+Within the "Servers" and "Clients" lists in test.conf, you can specify multiple configurations with different numbers of instances (e.g. two servers in "nyc3" and one in "nyc2") by appending them to the list paired with each key. As of now, there is only support for one loadbalancer.
+Note that default DigitalOcean accounts only support 10 droplets at any given time.
+
+To run the script:
+1) Set your DO_AUTHENTICATION_TOKEN to a valid Personal Access Token linked to the DO account you want to use. 
+(Instructions can be found at https://www.digitalocean.com/community/tutorials/how-to-use-the-digitalocean-api-v2 if you haven't generated one previously)
+
+2) Compile runserver.go, runbalancer.go, and runclient.go into runserver, runbalancer, and runclient binaries.
+
+3) Compile remotetest.go into a binary and run it! (using go run will not work due to the file dependencies)
+
+The results of the test will be output in JSON into 'test.out' and will contain each request's latency, the average latency, and droplet information for each client instance.
+
+The test should destroy all droplets created after it completes, but if for some reason it does not successfully run, you can use destroyall.go to destroy all droplets under your account whose names start with the "lbtest-" prefix.
