@@ -32,11 +32,11 @@ const BALANCER_PORT = "50051"
 const SERVER_PORT = "50052"
 
 type ClientOutput struct {
-	Latencies  []int64
 	Avglatency float64
+	Name       string
 	Region     string
 	Size       string
-	Name       string
+	Latencies  []int64
 }
 
 type TestOutput struct {
@@ -86,8 +86,8 @@ func WriteTestOutput(filename string, latencies [][]int64, avglatencies []float6
 		clientoutputs[k] = ClientOutput{
 			Latencies:  latencies[k],
 			Avglatency: avglatencies[k],
-			Region:     clients[k].Region.String(),
-			Size:       clients[k].Size.String(),
+			Region:     clients[k].Region.Slug,
+			Size:       clients[k].Size.Slug,
 			Name:       clients[k].Name,
 		}
 		avglatency += avglatencies[k]
@@ -101,7 +101,7 @@ func WriteTestOutput(filename string, latencies [][]int64, avglatencies []float6
 		Clients:    clientoutputs,
 	}
 
-	json, err := json.Marshal(testoutput)
+	json, err := json.MarshalIndent(testoutput, "", "    ")
 	check(err)
 
 	err = ioutil.WriteFile(filename, json, 0644)
@@ -116,7 +116,7 @@ func WriteClientConfig(filename string, balancer_ip string, iterations int) {
 		Iterations: iterations,
 	}
 
-	json, err := json.Marshal(conf)
+	json, err := json.MarshalIndent(conf, "", "    ")
 	check(err)
 
 	err = ioutil.WriteFile(filename, json, 0644)
@@ -135,7 +135,7 @@ func WriteLBConfig(filename string, servers []string) {
 		LBPort:  BALANCER_PORT,
 	}
 
-	json, err := json.Marshal(conf)
+	json, err := json.MarshalIndent(conf, "", "    ")
 	check(err)
 
 	err = ioutil.WriteFile(filename, json, 0644)
@@ -364,7 +364,6 @@ func main() {
 	}
 
 	// spin up droplet for load balancer
-	// TODO clean this up to not use [0]
 	fmt.Println("Initializing loadbalancer...")
 	balancers := DropletsFromConfig(client, keys, conf.Balancers, "loadbalancer")
 	balancer := balancers[0]
