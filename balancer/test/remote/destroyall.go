@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"strings"
 
 	"github.com/digitalocean/godo"
 	"golang.org/x/oauth2"
@@ -32,8 +33,11 @@ func GetAllDroplets(client *godo.Client) []godo.Droplet {
 	return droplets
 }
 
-func DeleteDroplets(client *godo.Client, droplets []godo.Droplet) {
+func DeleteTestDroplets(client *godo.Client, droplets []godo.Droplet) {
 	for k := range droplets {
+		if !strings.HasPrefix(droplets[k].Name, "lbtest-") {
+			continue
+		}
 		_, err := client.Droplets.Delete(droplets[k].ID)
 		if err != nil {
 			log.Printf("Deletion of droplet %s failed. Please manually destroy it.", droplets[k].Name)
@@ -83,5 +87,5 @@ func main() {
 	client := godo.NewClient(oauthClient)
 
 	droplets := GetAllDroplets(client)
-	DeleteDroplets(client, droplets)
+	DeleteTestDroplets(client, droplets)
 }

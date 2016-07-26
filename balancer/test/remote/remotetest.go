@@ -16,7 +16,6 @@ import (
 )
 
 const BASE_IMAGE = "ubuntu-14-04-x64"
-const NUM_CLIENTS = 1
 
 const SERVER_BINARY = "runserver"
 const BALANCER_BINARY = "runbalancer"
@@ -146,7 +145,7 @@ func DropletsFromConfig(client *godo.Client, keys []godo.DropletCreateSSHKey, co
 	for k := range conf {
 		names := make([]string, conf[k].Number)
 		for i := 0; i < conf[k].Number; i++ {
-			names[i] = fmt.Sprintf("test-%s-%d-%d", name, k, i)
+			names[i] = fmt.Sprintf("lbtest-%s-%d-%d", name, k, i)
 		}
 		request := &godo.DropletMultiCreateRequest{
 			Names:  names,
