@@ -255,10 +255,10 @@ func DeleteTestDroplets(client *godo.Client) {
 	droplets := GetAllDroplets(client)
 
 	for k := range droplets {
-		_, err := client.Droplets.Delete(droplets[k].ID)
 		if !strings.HasPrefix(droplets[k].Name, "lbtest-") {
 			continue
 		}
+		_, err := client.Droplets.Delete(droplets[k].ID)
 
 		if err != nil {
 			log.Printf("Deletion of droplet %s failed. Please manually destroy it.", droplets[k].Name)
