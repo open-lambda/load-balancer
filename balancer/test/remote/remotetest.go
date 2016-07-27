@@ -71,6 +71,7 @@ type TokenSource struct {
 	AccessToken string
 }
 
+// Required for oauth2 authentication
 func (t *TokenSource) Token() (*oauth2.Token, error) {
 	token := &oauth2.Token{
 		AccessToken: t.AccessToken,
@@ -79,6 +80,7 @@ func (t *TokenSource) Token() (*oauth2.Token, error) {
 	return token, nil
 }
 
+// Writes the compiled test outputs from all of the clients as JSON to TEST_OUTPUT
 func WriteTestOutput(filename string, latencies [][]int64, avglatencies []float64, clients []godo.Droplet) {
 	clientoutputs := make([]ClientOutput, len(avglatencies))
 	avglatency := 0.0
@@ -110,6 +112,7 @@ func WriteTestOutput(filename string, latencies [][]int64, avglatencies []float6
 	return
 }
 
+// Writes the configuration file for the client droplets (specified by ClientConfig struct)
 func WriteClientConfig(filename string, balancer_ip string, iterations int) {
 	conf := ClientConfig{
 		LBAddr:     fmt.Sprintf("%s:%s", balancer_ip, BALANCER_PORT),
@@ -125,6 +128,7 @@ func WriteClientConfig(filename string, balancer_ip string, iterations int) {
 	return
 }
 
+// Writes the configuration file for the balancer droplet (specified by LBConfig struct)
 func WriteLBConfig(filename string, servers []string) {
 	formatted := make([]string, len(servers))
 	for k := range servers {
@@ -144,6 +148,8 @@ func WriteLBConfig(filename string, servers []string) {
 	return
 }
 
+// Parses the output returned by executing the "runclient" binaries as a way for them
+// to return the test latencies from their perspective.
 func ParseClientOutput(out string) ([]int64, float64) {
 	latencies := make([]int64, 0)
 	var avglatency float64
@@ -175,6 +181,7 @@ func ParseClientOutput(out string) ([]int64, float64) {
 	return latencies, avglatency
 }
 
+// Executes a binary on a remote machine. Uses a custom ssh config file to suppress warnings. Returns stdout output
 func EXEC(binary string, ip string, dir string) string {
 	sshconf := filepath.Join(dir, SSH_CONF)
 	cmd := exec.Command("ssh", "-F", sshconf, fmt.Sprintf("root@%s", ip), fmt.Sprintf("./%s", binary))
@@ -186,17 +193,19 @@ func EXEC(binary string, ip string, dir string) string {
 	return string(out)
 }
 
-func SCP(binary string, ip string, dir string) []byte {
+// Copies a file to a remote machine. Uses a custom ssh config file to suppress warnings. Returns stdout output
+func SCP(file string, ip string, dir string) string {
 	sshconf := filepath.Join(dir, SSH_CONF)
-	cmd := exec.Command("scp", "-F", sshconf, filepath.Join(dir, binary), fmt.Sprintf("root@%s:./%s", ip, binary))
+	cmd := exec.Command("scp", "-F", sshconf, filepath.Join(dir, file), fmt.Sprintf("root@%s:./%s", ip, file))
 	fmt.Printf("%v\n", cmd.Args)
 
 	out, err := cmd.Output()
 	check(err)
 
-	return out
+	return string(out)
 }
 
+// Waits for the droplet with the given 'id' to have 'active' status and a public ip address
 func WaitForDroplet(client *godo.Client, id int) string {
 	for {
 		droplet, _, err := client.Droplets.Get(id)
@@ -209,12 +218,14 @@ func WaitForDroplet(client *godo.Client, id int) string {
 			fmt.Printf("Droplet %s active\n", droplet.Name)
 			return ip
 		}
+
 		time.Sleep(2 * time.Second)
 	}
 }
 
+// Creates and returns droplets specified by a list of DropletConfig structs
 func DropletsFromConfig(client *godo.Client, keys []godo.DropletCreateSSHKey, conf []DropletConfig, name string) []godo.Droplet {
-	servers := make([]godo.Droplet, 0)
+	droplets := make([]godo.Droplet, 0)
 	for k := range conf {
 		names := make([]string, conf[k].Number)
 		for i := 0; i < conf[k].Number; i++ {
@@ -229,14 +240,17 @@ func DropletsFromConfig(client *godo.Client, keys []godo.DropletCreateSSHKey, co
 			},
 			SSHKeys: keys,
 		}
-		newservers := CreateDroplets(client, request)
-		servers = append(servers, newservers...)
+
+		newdroplets, _, err := client.Droplets.CreateMultiple(request)
+		check(err)
+		droplets = append(droplets, newdroplets...)
 
 	}
 
-	return servers
+	return droplets
 }
 
+// Deletes all droplets linked with the user's account whose names start with "lbtest-"
 func DeleteTestDroplets(client *godo.Client) {
 	droplets := GetAllDroplets(client)
 
@@ -253,6 +267,7 @@ func DeleteTestDroplets(client *godo.Client) {
 	return
 }
 
+// Returns all droplets linked with the user's account
 func GetAllDroplets(client *godo.Client) []godo.Droplet {
 	options := &godo.ListOptions{
 		Page:    1,
@@ -265,21 +280,8 @@ func GetAllDroplets(client *godo.Client) []godo.Droplet {
 	return droplets
 }
 
-func CreateDroplets(client *godo.Client, request *godo.DropletMultiCreateRequest) []godo.Droplet {
-	newDroplets, _, err := client.Droplets.CreateMultiple(request)
-	check(err)
-
-	return newDroplets
-}
-
-func CreateDroplet(client *godo.Client, request *godo.DropletCreateRequest) *godo.Droplet {
-	newDroplet, _, err := client.Droplets.Create(request)
-	check(err)
-
-	return newDroplet
-}
-
-func ReadTestConfig(filename string) *TestConfig {
+// Reads the test configuration file and returns a TestConfig struct
+func ReadTestConfig(filename string) TestConfig {
 	fd, err := os.Open(filename)
 	check(err)
 
@@ -289,9 +291,10 @@ func ReadTestConfig(filename string) *TestConfig {
 	err = decoder.Decode(&conf)
 	check(err)
 
-	return &conf
+	return conf
 }
 
+// Returns all SSH public keys linked with the user's account
 func GetKeys(client *godo.Client) []godo.DropletCreateSSHKey {
 	options := &godo.ListOptions{
 		Page:    1,
@@ -312,18 +315,8 @@ func GetKeys(client *godo.Client) []godo.DropletCreateSSHKey {
 	return key_requests
 }
 
-func check(err error) {
-	if err != nil {
-		log.Panic(err)
-	}
-
-	return
-}
-
-func main() {
-	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
-	check(err)
-
+// Authenticates with the DigitalOcean personal access token and returns the godo client object
+func GetClient() *godo.Client {
 	pat := os.Getenv("DO_AUTHENTICATION_TOKEN")
 	if pat == "" {
 		log.Panic("DO_AUTHENTICATION_TOKEN environment variable not set")
@@ -333,9 +326,27 @@ func main() {
 		AccessToken: pat,
 	}
 	oauthClient := oauth2.NewClient(oauth2.NoContext, tokenSource)
-	client := godo.NewClient(oauthClient)
+
+	return godo.NewClient(oauthClient)
+}
+
+func check(err error) {
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return
+}
+
+func main() {
+	// get directory containing the binary
+	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
+	check(err)
+
+	client := GetClient()
 	defer DeleteTestDroplets(client)
 
+	// gets all available ssh keys from the digitalocean account (all are added to created droplets)
 	keys := GetKeys(client)
 
 	conf := ReadTestConfig(filepath.Join(dir, "test.conf"))
@@ -391,7 +402,7 @@ func main() {
 	}
 
 	/*
-		<----- WRITE FILES ----->
+		<----- WRITE CONFIG FILES ----->
 	*/
 
 	// write config for the load balancer
@@ -404,6 +415,7 @@ func main() {
 	fmt.Println("Writing client configuration...")
 	WriteClientConfig(filepath.Join(dir, CLIENT_CONF), balancer_ip, conf.Iterations)
 
+	// give the droplets some time for SSH to initialize
 	client_wg.Wait()
 	fmt.Println("Waiting for SSH to come up...")
 	time.Sleep(30 * time.Second)
@@ -451,13 +463,15 @@ func main() {
 		go EXEC(SERVER_BINARY, server_ips[k], dir)
 	}
 
-	time.Sleep(3 * time.Second) // TODO fix this
+	// waits for the servers to be run - should find a better way to do this
+	time.Sleep(3 * time.Second)
 
 	// run loadbalancer
 	fmt.Println("Running loadbalancer...")
 	go EXEC(BALANCER_BINARY, balancer_ip, dir)
 
-	time.Sleep(3 * time.Second) // TODO fix this
+	// waits for the loadbalancer to be run - should find a better way to do this
+	time.Sleep(3 * time.Second)
 
 	// run clients
 	fmt.Println("Running clients...")
@@ -472,12 +486,8 @@ func main() {
 	}
 
 	test_wg.Wait()
-	// TODO write the test output to a file
-	avg := 0.0
-	for k := range clients {
-		avg += avglatencies[k]
-	}
 
+	// write client outputs
 	fmt.Println("Writing test output...")
 	WriteTestOutput(filepath.Join(dir, TEST_OUTPUT), latencies, avglatencies, clients)
 
