@@ -12,15 +12,20 @@ import (
 )
 
 func RunBalancer(address string, chooser serverPick.ServerPicker) {
-	lis, err := net.Listen("tcp", address)
+	tcpaddr, err := net.ResolveTCPAddr("tcp", address)
 	if err != nil {
-		panic(err.Error())
+		panic(err)
+	}
+
+	lis, err := net.ListenTCP("tcp", tcpaddr)
+	if err != nil {
+		panic(err)
 	}
 
 	for {
 		conn1, err := lis.Accept()
 		if err != nil {
-			panic(err.Error())
+			panic(err)
 		}
 
 		// Will need access to buf later for proxying
@@ -31,7 +36,7 @@ func RunBalancer(address string, chooser serverPick.ServerPicker) {
 		conn := &connPeek.ReaderConn{Reader: r, Conn: conn1}
 		st, err := transport.NewServerTransport("http2", conn, 100, nil)
 		if err != nil {
-			panic(err.Error())
+			panic(err)
 		}
 
 		st.HandleStreams(func(stream *transport.Stream) {
@@ -41,14 +46,14 @@ func RunBalancer(address string, chooser serverPick.ServerPicker) {
 			// Make decision about which backend(s) to connect to
 			servers, err := chooser.ChooseServers(name, *list.New())
 			if err != nil {
-				panic(err.Error())
+				panic(err)
 			}
 
 			// Actually send the request to "best" backend (first one for now)
 			go func() {
 				conn2, err := net.Dial("tcp", servers[0])
 				if err != nil {
-					panic(err.Error())
+					panic(err)
 				}
 				conn.SecondConn(conn2) // This is so we can close conn2 cleanly
 				io.Copy(conn2, &buf)
