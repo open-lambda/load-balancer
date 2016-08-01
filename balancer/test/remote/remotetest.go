@@ -491,5 +491,5 @@ func main() {
 	fmt.Println("Writing test output...")
 	WriteTestOutput(filepath.Join(dir, TEST_OUTPUT), latencies, avglatencies, clients)
 
-	fmt.Println("Testing complete.")
+	fmt.Printf("Testing complete. Results written to %s\n", TEST_OUTPUT)
 }
