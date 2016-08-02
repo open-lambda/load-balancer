@@ -14,7 +14,7 @@ import (
 
 type Config struct {
 	Servers []string
-	LBAddr string
+	LBAddr  string
 }
 
 func readConfig(filename string) *Config {
@@ -41,7 +41,9 @@ func main() {
 	}
 
 	chooser := serverPick.NewFirstTwo(conf.Servers)
-	go balancer.RunBalancer(conf.LBAddr, chooser)
+	lb := new(balancer.LoadBalancer)
+	lb.Init(conf.LBAddr, chooser, 5)
+	go lb.Run()
 	for i := 0; ; i++ {
 		fmt.Printf("Client's been run %v time(s)\n", i)
 		client.RunClient(conf.LBAddr)

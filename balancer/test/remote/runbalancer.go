@@ -36,5 +36,7 @@ func main() {
 	conf := readConfig("balancer.conf")
 	chooser := serverPick.NewFirstTwo(conf.Servers)
 
-	balancer.RunBalancer(fmt.Sprintf(":%s", conf.LBPort), chooser)
+	lb := new(balancer.LoadBalancer)
+	lb.Init(fmt.Sprintf(":%s", conf.LBPort), chooser, conf.Consumers)
+	lb.Run()
 }

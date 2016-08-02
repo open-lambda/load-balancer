@@ -1,7 +1,7 @@
 SOURCEDIR=.
 
 EXECUTABLES = runclient runserver runbalancer destroyall
-#SOURCES := $(shell find $(SOURCEDIR) -name '*.go')
+CONFIGS = balancer.conf client.conf
 BINARY=remotetest
 
 VERSION=1.0.0
@@ -31,3 +31,4 @@ test: $(BINARY)
 clean:
 	@rm -f $(EXECUTABLES)
 	@rm -f $(BINARY)
+	@rm -f $(CONFIGS)

@@ -31,6 +31,8 @@ const TEST_OUTPUT = "test.out"
 const BALANCER_PORT = "50051"
 const SERVER_PORT = "50052"
 
+const LB_CONSUMERS = "10"
+
 type ClientOutput struct {
 	Avglatency float64
 	Name       string
@@ -135,8 +137,9 @@ func WriteLBConfig(filename string, servers []string) {
 		formatted[k] = fmt.Sprintf("%s:%s", servers[k], SERVER_PORT)
 	}
 	conf := LBConfig{
-		Servers: formatted,
-		LBPort:  BALANCER_PORT,
+		Servers:   formatted,
+		LBPort:    BALANCER_PORT,
+		Consumers: LB_CONSUMERS,
 	}
 
 	json, err := json.MarshalIndent(conf, "", "    ")
