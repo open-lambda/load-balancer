@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -31,17 +30,20 @@ func push(client pb.RegistryClient, name string, filetype string, file string) {
 	chunk := make([]byte, CHUNK_SIZE)
 	for {
 		_, err := r.Read(chunk)
-		err2 := stream.Send(&pb.Chunk{
+		if err == io.EOF {
+			// check that reply was successful
+			_, err := stream.CloseAndRecv()
+			check(err)
+			return
+		}
+
+		err = stream.Send(&pb.Chunk{
 			FileType: filetype,
 			Name:     name,
 			Data:     chunk,
 		})
+		check(err)
 
-		check(err2)
-
-		if err == io.EOF {
-			return
-		}
 	}
 
 	return
@@ -58,11 +60,12 @@ func pull(client pb.RegistryClient, name string, filetype string, outfile string
 	data := make([]byte, 0)
 	for {
 		chunk, err := stream.Recv()
-		data = append(data, chunk.Data...)
 		if err == io.EOF {
 			return data
 		}
 		check(err)
+
+		data = append(data, chunk.Data...)
 	}
 
 	return data
@@ -70,7 +73,7 @@ func pull(client pb.RegistryClient, name string, filetype string, outfile string
 
 func check(err error) {
 	if err != nil {
-		log.Fatal(err)
+		grpclog.Fatal(err)
 	}
 }
 
@@ -90,15 +93,23 @@ func main() {
 	protofile := "example.proto"
 	handlerfile := "example.handler"
 
+	fmt.Println("Pushing proto...")
 	// Push proto
 	push(client, name, PROTO, protofile)
 
+	fmt.Println("Pushing handler...")
 	// Push handler
 	push(client, name, HANDLER, handlerfile)
 
+	fmt.Println("Pulling proto...")
 	// Pull proto
-	fmt.Printf(string(pull(client, name, PROTO, "proto.out")))
+	proto := pull(client, name, PROTO, "proto.out")
+	err = ioutil.WriteFile("proto.out", proto, 0644)
+	check(err)
 
+	fmt.Println("Pulling handler...")
 	// Pull handler
-	fmt.Printf(string(pull(client, name, HANDLER, "handler.out")))
+	handler := pull(client, name, HANDLER, "handler.out")
+	err = ioutil.WriteFile("handler.out", handler, 0644)
+	check(err)
 }

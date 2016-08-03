@@ -20,20 +20,35 @@ const HANDLER = "handler"
 const CHUNK_SIZE = 1024
 
 type registryServer struct {
-	protos   map[string][]byte
-	handlers map[string][]byte
+	Protos   map[string][]byte
+	Handlers map[string][]byte
 }
 
 func (s *registryServer) Push(stream pb.Registry_PushServer) error {
+	data := make([]byte, 0)
+	filetype := ""
+	name := ""
 	for {
-		// chunk, err
-		_, err := stream.Recv()
+		chunk, err := stream.Recv()
 		if err == io.EOF {
+			switch filetype {
+			case PROTO:
+				s.Handlers[name] = data
+			case HANDLER:
+				s.Protos[name] = data
+			default:
+				grpclog.Fatal("Empty push request")
+			}
+
 			return stream.SendAndClose(&pb.Received{
 				Received: true,
 			})
 		}
-		// actually read the chunks of data, if it fails send false
+
+		filetype = chunk.FileType
+		name = chunk.Name
+		check(err)
+		data = append(data, chunk.Data...)
 	}
 
 	return nil
@@ -43,27 +58,24 @@ func (s *registryServer) Pull(req *pb.Request, stream pb.Registry_PullServer) er
 	var data []byte
 	switch req.FileType {
 	case PROTO:
-		data = s.protos[req.Name]
+		data = s.Protos[req.Name]
 	case HANDLER:
-		data = s.handlers[req.Name]
+		data = s.Handlers[req.Name]
 	}
 
 	r := bytes.NewReader(data)
 	chunk := make([]byte, CHUNK_SIZE)
 	for {
 		_, err := r.Read(chunk)
-		err2 := stream.Send(&pb.Chunk{
+		if err == io.EOF {
+			return nil
+		}
+		err = stream.Send(&pb.Chunk{
 			FileType: req.FileType,
 			Name:     req.Name,
 			Data:     chunk,
 		})
-		if err2 != nil {
-			return err2
-		}
-
-		if err == io.EOF {
-			return nil
-		}
+		check(err)
 	}
 
 	return nil
@@ -71,17 +83,21 @@ func (s *registryServer) Pull(req *pb.Request, stream pb.Registry_PullServer) er
 
 func initServer() *registryServer {
 	s := new(registryServer)
-	s.protos = make(map[string][]byte)
-	s.handlers = make(map[string][]byte)
+	s.Protos = make(map[string][]byte)
+	s.Handlers = make(map[string][]byte)
 
 	return s
 }
 
+func check(err error) {
+	if err != nil {
+		grpclog.Fatal(err)
+	}
+}
+
 func main() {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", PORT))
-	if err != nil {
-		grpclog.Fatalf("failed to listen: %v", err)
-	}
+	check(err)
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterRegistryServer(grpcServer, initServer())
