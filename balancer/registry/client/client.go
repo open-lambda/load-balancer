@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -20,19 +21,19 @@ const HANDLER = "handler"
 
 const CHUNK_SIZE = 1024
 
-func push(client pb.RegistryClient, name string, filetype string, file string) {
+func push(client pb.RegistryClient, name, filetype, file string) {
+	stream, err := client.Push(context.Background())
+	check(err)
+
 	data, err := ioutil.ReadFile(file)
 	check(err)
 
-	stream, err := client.Push(context.Background())
-
 	r := bytes.NewReader(data)
-	chunk := make([]byte, CHUNK_SIZE)
 	for {
-		_, err := r.Read(chunk)
-		if err == io.EOF {
-			// check that reply was successful
-			_, err := stream.CloseAndRecv()
+		chunk := make([]byte, CHUNK_SIZE)
+		n, err := r.Read(chunk)
+		if n == 0 && err == io.EOF {
+			_, err = stream.CloseAndRecv()
 			check(err)
 			return
 		}
@@ -43,13 +44,12 @@ func push(client pb.RegistryClient, name string, filetype string, file string) {
 			Data:     chunk,
 		})
 		check(err)
-
 	}
 
 	return
 }
 
-func pull(client pb.RegistryClient, name string, filetype string, outfile string) []byte {
+func pull(client pb.RegistryClient, name, filetype string) string {
 	stream, err := client.Pull(context.Background(), &pb.Request{
 		ClientType: "balancer",
 		FileType:   filetype,
@@ -61,14 +61,18 @@ func pull(client pb.RegistryClient, name string, filetype string, outfile string
 	for {
 		chunk, err := stream.Recv()
 		if err == io.EOF {
-			return data
+			break
 		}
 		check(err)
 
 		data = append(data, chunk.Data...)
 	}
 
-	return data
+	fmt.Print(string(data[:]))
+	n := bytes.IndexByte(data, 0)
+	s := string(data[:n])
+	fmt.Print(s)
+	return s
 }
 
 func check(err error) {
@@ -89,9 +93,9 @@ func main() {
 
 	client := pb.NewRegistryClient(conn)
 
-	name := "example"
-	protofile := "example.proto"
-	handlerfile := "example.handler"
+	name := "test"
+	protofile := "test.proto"
+	handlerfile := "test.go"
 
 	fmt.Println("Pushing proto...")
 	// Push proto
@@ -103,13 +107,19 @@ func main() {
 
 	fmt.Println("Pulling proto...")
 	// Pull proto
-	proto := pull(client, name, PROTO, "proto.out")
-	err = ioutil.WriteFile("proto.out", proto, 0644)
+	proto := pull(client, name, PROTO)
 	check(err)
+	fd, err := os.Create("out.proto")
+	check(err)
+	fd.WriteString(proto)
+	fd.Close()
 
 	fmt.Println("Pulling handler...")
 	// Pull handler
-	handler := pull(client, name, HANDLER, "handler.out")
-	err = ioutil.WriteFile("handler.out", handler, 0644)
+	handler := pull(client, name, HANDLER)
 	check(err)
+	fd, err = os.Create("out.go")
+	check(err)
+	fd.WriteString(handler)
+	fd.Close()
 }
