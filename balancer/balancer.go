@@ -7,6 +7,7 @@ import (
 	"net"
 
 	"github.com/open-lambda/load-balancer/balancer/connPeek"
+	"github.com/open-lambda/load-balancer/balancer/inspect/helloworld.Greeter"
 	"github.com/open-lambda/load-balancer/balancer/serverPick"
 	"google.golang.org/grpc/transport"
 )
@@ -40,6 +41,7 @@ func (lb *LoadBalancer) HandleConn(clientconn *net.TCPConn) {
 	st.HandleStreams(func(stream *transport.Stream) {
 		// Get method name
 		name := stream.Method()
+        test.GetArgs(buf.Bytes())
 
 		// Make decision about which backend(s) to connect to
 		servers, err := lb.Chooser.ChooseServers(name, *list.New())
