@@ -41,7 +41,7 @@ func (lb *LoadBalancer) HandleConn(clientconn *net.TCPConn) {
 	st.HandleStreams(func(stream *transport.Stream) {
 		// Get method name
 		name := stream.Method()
-        test.GetArgs(buf.Bytes())
+		test.GetArgs(buf.Bytes())
 
 		// Make decision about which backend(s) to connect to
 		servers, err := lb.Chooser.ChooseServers(name, *list.New())
