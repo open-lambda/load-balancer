@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/open-lambda/load-balancer/balancer"
 	"github.com/open-lambda/load-balancer/balancer/serverPick"
@@ -44,6 +45,7 @@ func main() {
 	lb := new(balancer.LoadBalancer)
 	lb.Init(conf.LBAddr, chooser, 5)
 	go lb.Run()
+	time.Sleep(time.Second)
 	for i := 0; ; i++ {
 		fmt.Printf("Client's been run %v time(s)\n", i)
 		client.RunClient(conf.LBAddr)
