@@ -4,8 +4,6 @@ package registry;
 
 service Registry {
 	rpc Push(stream Chunk) returns (Received) {}
-
-	rpc Pull(Request) returns (stream Chunk) {}
 }
 
 // Chunk of a file
@@ -20,11 +18,4 @@ message Chunk {
 // Do we need this or can we just use gRPC errors?
 message Received {
 	bool received = 1;
-}
-
-// Pull a file from the registry
-message Request {
-	string client_type = 1; // server or lb
-	string file_type = 2;
-	string name = 3; // name of service
 }

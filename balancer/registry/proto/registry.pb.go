@@ -11,7 +11,6 @@ It is generated from these files:
 It has these top-level messages:
 	Chunk
 	Received
-	Request
 */
 package registry
 
@@ -49,6 +48,7 @@ func (*Chunk) ProtoMessage()               {}
 func (*Chunk) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{0} }
 
 // Acknowledgement - maybe stream this for partial upload recovery
+// Do we need this or can we just use gRPC errors?
 type Received struct {
 	Received bool `protobuf:"varint,1,opt,name=received" json:"received,omitempty"`
 }
@@ -58,22 +58,9 @@ func (m *Received) String() string            { return proto.CompactTextString(m
 func (*Received) ProtoMessage()               {}
 func (*Received) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{1} }
 
-// Pull a file from the registry
-type Request struct {
-	ClientType string `protobuf:"bytes,1,opt,name=client_type,json=clientType" json:"client_type,omitempty"`
-	FileType   string `protobuf:"bytes,2,opt,name=file_type,json=fileType" json:"file_type,omitempty"`
-	Name       string `protobuf:"bytes,3,opt,name=name" json:"name,omitempty"`
-}
-
-func (m *Request) Reset()                    { *m = Request{} }
-func (m *Request) String() string            { return proto.CompactTextString(m) }
-func (*Request) ProtoMessage()               {}
-func (*Request) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{2} }
-
 func init() {
 	proto.RegisterType((*Chunk)(nil), "registry.Chunk")
 	proto.RegisterType((*Received)(nil), "registry.Received")
-	proto.RegisterType((*Request)(nil), "registry.Request")
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -88,7 +75,6 @@ const _ = grpc.SupportPackageIsVersion3
 
 type RegistryClient interface {
 	Push(ctx context.Context, opts ...grpc.CallOption) (Registry_PushClient, error)
-	Pull(ctx context.Context, in *Request, opts ...grpc.CallOption) (Registry_PullClient, error)
 }
 
 type registryClient struct {
@@ -133,43 +119,10 @@ func (x *registryPushClient) CloseAndRecv() (*Received, error) {
 	return m, nil
 }
 
-func (c *registryClient) Pull(ctx context.Context, in *Request, opts ...grpc.CallOption) (Registry_PullClient, error) {
-	stream, err := grpc.NewClientStream(ctx, &_Registry_serviceDesc.Streams[1], c.cc, "/registry.Registry/Pull", opts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &registryPullClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-type Registry_PullClient interface {
-	Recv() (*Chunk, error)
-	grpc.ClientStream
-}
-
-type registryPullClient struct {
-	grpc.ClientStream
-}
-
-func (x *registryPullClient) Recv() (*Chunk, error) {
-	m := new(Chunk)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
 // Server API for Registry service
 
 type RegistryServer interface {
 	Push(Registry_PushServer) error
-	Pull(*Request, Registry_PullServer) error
 }
 
 func RegisterRegistryServer(s *grpc.Server, srv RegistryServer) {
@@ -202,27 +155,6 @@ func (x *registryPushServer) Recv() (*Chunk, error) {
 	return m, nil
 }
 
-func _Registry_Pull_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(Request)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(RegistryServer).Pull(m, &registryPullServer{stream})
-}
-
-type Registry_PullServer interface {
-	Send(*Chunk) error
-	grpc.ServerStream
-}
-
-type registryPullServer struct {
-	grpc.ServerStream
-}
-
-func (x *registryPullServer) Send(m *Chunk) error {
-	return x.ServerStream.SendMsg(m)
-}
-
 var _Registry_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "registry.Registry",
 	HandlerType: (*RegistryServer)(nil),
@@ -233,11 +165,6 @@ var _Registry_serviceDesc = grpc.ServiceDesc{
 			Handler:       _Registry_Push_Handler,
 			ClientStreams: true,
 		},
-		{
-			StreamName:    "Pull",
-			Handler:       _Registry_Pull_Handler,
-			ServerStreams: true,
-		},
 	},
 	Metadata: fileDescriptor0,
 }
@@ -245,7 +172,7 @@ var _Registry_serviceDesc = grpc.ServiceDesc{
 func init() { proto.RegisterFile("registry.proto", fileDescriptor0) }
 
 var fileDescriptor0 = []byte{
-	// 225 bytes of a gzipped FileDescriptorProto
+	// 167 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0xe2, 0xe2, 0x2b, 0x4a, 0x4d, 0xcf,
 	0x2c, 0x2e, 0x29, 0xaa, 0xd4, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0xe2, 0x80, 0xf1, 0x95, 0x7c,
 	0xb8, 0x58, 0x9d, 0x33, 0x4a, 0xf3, 0xb2, 0x85, 0xa4, 0xb9, 0x38, 0xd3, 0x32, 0x73, 0x52, 0xe3,
@@ -253,12 +180,8 @@ var fileDescriptor0 = []byte{
 	0xbe, 0x90, 0x10, 0x17, 0x4b, 0x5e, 0x62, 0x6e, 0xaa, 0x04, 0x13, 0x58, 0x1c, 0xcc, 0x06, 0x89,
 	0xa5, 0x24, 0x96, 0x24, 0x4a, 0x30, 0x03, 0xc5, 0x78, 0x82, 0xc0, 0x6c, 0x25, 0x35, 0x2e, 0x8e,
 	0xa0, 0xd4, 0xe4, 0xd4, 0xcc, 0xb2, 0xd4, 0x14, 0x21, 0x29, 0x2e, 0xa0, 0x2d, 0x10, 0x36, 0xd8,
-	0x3c, 0x8e, 0x20, 0x38, 0x5f, 0x29, 0x9a, 0x8b, 0x3d, 0x28, 0xb5, 0xb0, 0x34, 0xb5, 0xb8, 0x44,
-	0x48, 0x9e, 0x8b, 0x3b, 0x39, 0x27, 0x33, 0x35, 0xaf, 0x04, 0xd9, 0x66, 0x2e, 0x88, 0x10, 0xd8,
-	0x6e, 0x14, 0x87, 0x31, 0xe1, 0x70, 0x18, 0x33, 0xc2, 0x61, 0x46, 0xd9, 0x20, 0x47, 0x40, 0xbc,
-	0x27, 0xa4, 0xcf, 0xc5, 0x12, 0x50, 0x5a, 0x9c, 0x21, 0xc4, 0xaf, 0x07, 0x0f, 0x01, 0xb0, 0x77,
-	0xa5, 0x84, 0x10, 0x02, 0x30, 0x17, 0x2b, 0x31, 0x68, 0x30, 0x0a, 0xe9, 0x81, 0x34, 0xe4, 0xe4,
-	0x08, 0x09, 0x22, 0xcb, 0x83, 0x5d, 0x2a, 0x85, 0x6e, 0x86, 0x12, 0x83, 0x01, 0x63, 0x12, 0x1b,
-	0x38, 0x40, 0x8d, 0x01, 0x01, 0x00, 0x00, 0xff, 0xff, 0x84, 0xe6, 0xf1, 0xaa, 0x62, 0x01, 0x00,
-	0x00,
+	0x3c, 0x8e, 0x20, 0x38, 0xdf, 0xc8, 0x1a, 0xa4, 0x0e, 0xe2, 0x02, 0x21, 0x7d, 0x2e, 0x96, 0x80,
+	0xd2, 0xe2, 0x0c, 0x21, 0x7e, 0x3d, 0xb8, 0x23, 0xc1, 0x2e, 0x92, 0x12, 0x42, 0x08, 0xc0, 0x0c,
+	0x55, 0x62, 0xd0, 0x60, 0x4c, 0x62, 0x03, 0xfb, 0xc1, 0x18, 0x10, 0x00, 0x00, 0xff, 0xff, 0x59,
+	0xd1, 0xcb, 0x68, 0xd5, 0x00, 0x00, 0x00,
 }
