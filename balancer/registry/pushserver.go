@@ -12,23 +12,33 @@ import (
 	r "gopkg.in/dancannon/gorethink.v2"
 )
 
+func generateParser(proto []byte) ([]byte, error) {
+	return []byte("Fake parser code"), nil
+}
+
 func (s *PushServer) ProcessAndStore(name string, proto, handler []byte) error {
-	sfiles := ServerFiles{
-		Name:        name,
-		HandlerFile: handler,
-		PBFile:      proto,
+	fmt.Print(string(proto[:]))
+	sfiles := map[string]interface{}{
+		"id":      name,
+		"handler": handler,
+		"pb":      proto,
 	}
 
-	lbfiles := BalancerFiles{
-		Name:   name,
-		SOFile: handler,
+	parser, err := generateParser(proto)
+
+	lbfiles := map[string]interface{}{
+		"id":     name,
+		"parser": parser,
 	}
 
-	_, err := r.Table(SERVER).Replace(sfiles).Run(s.Conn)
+	opts := r.InsertOpts{Conflict: "replace"}
+
+	_, err = r.Table(SERVER).Insert(&sfiles, opts).RunWrite(s.Conn)
 	grpcCheck(err)
 
-	_, err = r.Table(BALANCER).Replace(lbfiles).Run(s.Conn)
+	_, err = r.Table(BALANCER).Insert(&lbfiles, opts).RunWrite(s.Conn)
 	grpcCheck(err)
+
 	return nil
 }
 
@@ -89,20 +99,18 @@ func InitPushServer(cluster []string, port, chunksize int) *PushServer {
 		Database:  DATABASE,
 	})
 	grpcCheck(err)
-	/*
-		_, err = r.DBCreate(DATABASE).RunWrite(session)
-		grpcCheck(err)
 
-		opts := r.TableCreateOpts{
-			PrimaryKey: "name",
-		}
+	_, err = r.DBDrop(DATABASE).RunWrite(session)
+	grpcCheck(err)
+	_, err = r.DBCreate(DATABASE).RunWrite(session)
+	grpcCheck(err)
 
-		_, err = r.TableCreate(BALANCER, opts).RunWrite(session)
-		grpcCheck(err)
+	_, err = r.TableCreate(BALANCER).RunWrite(session)
+	grpcCheck(err)
 
-		_, err = r.TableCreate(SERVER, opts).RunWrite(session)
-		grpcCheck(err)
-	*/
+	_, err = r.TableCreate(SERVER).RunWrite(session)
+	grpcCheck(err)
+
 	s.Conn = session
 	s.Port = port
 	s.ChunkSize = chunksize

@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
 
 	pb "github.com/open-lambda/load-balancer/balancer/registry/regproto"
@@ -33,18 +34,18 @@ type PullClient struct {
 }
 
 type ServerFiles struct {
-	Name        string `gorethink:"primary_key,omitempty"`
-	HandlerFile []byte `gorethink:"handler"`
-	PBFile      []byte `gorethink:"pb`
+	Name    string `gorethink:"id,omitempty"`
+	Handler []byte `gorethink:"handler"`
+	PB      []byte `gorethink:"pb"`
 }
 
 type BalancerFiles struct {
-	Name   string `gorethink:"primary_key,omitempty"`
-	SOFile []byte `gorethink:"so"`
+	Name   string `gorethink:"id,omitempty"`
+	Parser []byte `gorethink:"parser"`
 }
 
 func grpcCheck(err error) {
 	if err != nil {
-		grpclog.Fatal(err)
+		grpclog.Fatal(grpc.ErrorDesc(err))
 	}
 }

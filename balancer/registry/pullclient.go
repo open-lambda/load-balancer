@@ -1,29 +1,38 @@
 package registry
 
 import (
+	"bytes"
 	"io/ioutil"
 	"log"
 
 	r "gopkg.in/dancannon/gorethink.v2"
 )
 
+func bytesToString(b []byte) string {
+	n := bytes.IndexByte(b, 0)
+
+	return string(b[:n])
+}
+
 func (c *PullClient) Pull(name string) map[string][]byte {
 	ret := make(map[string][]byte)
 
-	//id := r.UUID(name)
 	switch c.Type {
 	case SERVER:
 		res, err := r.Table(SERVER).Get(name).Run(c.Conn)
 		check(err)
-
+		if res.IsNil() {
+			panic("nil result")
+		}
 		files := ServerFiles{}
 		res.One(&files)
 		check(res.Err())
 
-		ret["handler"] = files.HandlerFile
-		ret["pb"] = files.PBFile
+		ret["handler"] = files.Handler
+		ret["pb"] = files.PB
 
 		return ret
+
 	case BALANCER:
 		res, err := r.Table(BALANCER).Get(name).Run(c.Conn)
 		check(err)
@@ -32,7 +41,7 @@ func (c *PullClient) Pull(name string) map[string][]byte {
 		res.One(&files)
 		check(res.Err())
 
-		ret["so"] = files.SOFile
+		ret["parser"] = files.Parser
 
 		return ret
 	}

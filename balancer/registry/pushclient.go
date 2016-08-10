@@ -37,7 +37,7 @@ func (c *PushClient) Push(name, proto, handler string) {
 
 	data, err := ioutil.ReadFile(proto)
 	grpcCheck(err)
-	c.sendFile(stream, name, PROTO, data)
+	c.sendFile(stream, name, proto, data)
 
 	data, err = ioutil.ReadFile(handler)
 	grpcCheck(err)
@@ -60,7 +60,6 @@ func InitPushClient(serveraddr string, chunksize int) *PushClient {
 
 	conn, err := grpc.Dial(c.ServerAddr, opts...)
 	grpcCheck(err)
-	defer conn.Close()
 
 	c.Conn = pb.NewRegistryClient(conn)
 
