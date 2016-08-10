@@ -91,18 +91,13 @@ func (s *PushServer) Run() {
 
 // TODO add authKey argument to creating the session
 // TODO don't create the database every time?
-func InitPushServer(cluster []string, port, chunksize int) *PushServer {
+func InitPushServer(cluster []string, db string, port, chunksize int) *PushServer {
 	s := new(PushServer)
 
 	session, err := r.Connect(r.ConnectOpts{
 		Addresses: cluster,
-		Database:  DATABASE,
+		Database:  db,
 	})
-	grpcCheck(err)
-
-	_, err = r.DBDrop(DATABASE).RunWrite(session)
-	grpcCheck(err)
-	_, err = r.DBCreate(DATABASE).RunWrite(session)
 	grpcCheck(err)
 
 	_, err = r.TableCreate(BALANCER).RunWrite(session)

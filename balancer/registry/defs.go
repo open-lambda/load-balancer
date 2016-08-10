@@ -13,7 +13,6 @@ const (
 	HANDLER  = "handler"
 	SERVER   = "server"
 	BALANCER = "balancer"
-	DATABASE = "registry"
 )
 
 type PushClient struct {
