@@ -37,7 +37,7 @@ func (c *PushClient) Push(name, proto, handler string) {
 
 	data, err := ioutil.ReadFile(proto)
 	grpcCheck(err)
-	c.sendFile(stream, name, proto, data)
+	c.sendFile(stream, name, PROTO, data)
 
 	data, err = ioutil.ReadFile(handler)
 	grpcCheck(err)

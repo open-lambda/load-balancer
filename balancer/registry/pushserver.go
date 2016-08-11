@@ -17,7 +17,6 @@ func generateParser(proto []byte) ([]byte, error) {
 }
 
 func (s *PushServer) ProcessAndStore(name string, proto, handler []byte) error {
-	fmt.Print(string(proto[:]))
 	sfiles := map[string]interface{}{
 		"id":      name,
 		"handler": handler,
@@ -99,13 +98,13 @@ func InitPushServer(cluster []string, db string, port, chunksize int) *PushServe
 		Database:  db,
 	})
 	grpcCheck(err)
+	/*
+		_, err = r.TableCreate(BALANCER).RunWrite(session)
+		grpcCheck(err)
 
-	_, err = r.TableCreate(BALANCER).RunWrite(session)
-	grpcCheck(err)
-
-	_, err = r.TableCreate(SERVER).RunWrite(session)
-	grpcCheck(err)
-
+		_, err = r.TableCreate(SERVER).RunWrite(session)
+		grpcCheck(err)
+	*/
 	s.Conn = session
 	s.Port = port
 	s.ChunkSize = chunksize

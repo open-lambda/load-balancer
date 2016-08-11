@@ -21,9 +21,7 @@ func (c *PullClient) Pull(name string) map[string][]byte {
 	case SERVER:
 		res, err := r.Table(SERVER).Get(name).Run(c.Conn)
 		check(err)
-		if res.IsNil() {
-			panic("nil result")
-		}
+
 		files := ServerFiles{}
 		res.One(&files)
 		check(res.Err())
@@ -57,13 +55,13 @@ func writeStringToFile(s, filename string) {
 	return
 }
 
-func initClient(cluster []string, clienttype string) *PullClient {
+func initClient(cluster []string, db string, clienttype string) *PullClient {
 	c := new(PullClient)
 	c.Type = clienttype
 
 	session, err := r.Connect(r.ConnectOpts{
 		Addresses: cluster,
-		Database:  DATABASE,
+		Database:  db,
 	})
 	check(err)
 
@@ -72,12 +70,12 @@ func initClient(cluster []string, clienttype string) *PullClient {
 	return c
 }
 
-func InitLBClient(cluster []string) *PullClient {
-	return initClient(cluster, BALANCER)
+func InitLBClient(cluster []string, db string) *PullClient {
+	return initClient(cluster, db, BALANCER)
 }
 
-func InitServerClient(cluster []string) *PullClient {
-	return initClient(cluster, SERVER)
+func InitServerClient(cluster []string, db string) *PullClient {
+	return initClient(cluster, db, SERVER)
 }
 
 func check(err error) {
