@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 
+	"github.com/open-lambda/load-balancer/balancer/inspect/codegen"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
 
@@ -17,10 +18,13 @@ func generateParser(proto []byte) ([]byte, error) {
 }
 
 func (s *PushServer) ProcessAndStore(name string, proto, handler []byte) error {
+	pb, err := codegen.Generate(proto, name)
+	grpcCheck(err)
+
 	sfiles := map[string]interface{}{
 		"id":      name,
 		"handler": handler,
-		"pb":      proto,
+		"pb":      pb,
 	}
 
 	parser, err := generateParser(proto)
