@@ -2,13 +2,12 @@ package codegen
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
-
-	"github.com/golang/protobuf/protoc-gen-go/generator"
 )
 
 func Generate(file []byte, name string) ([]byte, error) {
@@ -28,13 +27,16 @@ func Generate(file []byte, name string) ([]byte, error) {
 
 	go_out := fmt.Sprintf("--go_out=%s", dir)
 	proto_path := fmt.Sprintf("--proto_path=%s", dir)
+
 	cmd := exec.Command("protoc", go_out, proto_path, protofile)
-	cmd.Stderr = os.Stderr
+	var e bytes.Buffer
+	cmd.Stderr = &e
 
 	err = cmd.Run()
 	if err != nil {
-		return nil, err
+		return nil, errors.New(e.String())
 	}
+
 	defer os.Remove(fmt.Sprintf("%s/%s.pb.go", dir, name))
 
 	pbfile := fmt.Sprintf("%s.pb.go", name)
