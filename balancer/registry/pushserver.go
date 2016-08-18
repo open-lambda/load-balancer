@@ -25,7 +25,7 @@ func (p LBFileProcessor) Process(name string, files map[string][]byte) ([]r.DBIn
 		"pb":      pb,
 	}
 	sinsert := r.DBInsert{
-		Table: r.SERVER,
+		Table: SERVER,
 		Data:  &sfiles,
 	}
 	ret = append(ret, sinsert)
@@ -35,7 +35,7 @@ func (p LBFileProcessor) Process(name string, files map[string][]byte) ([]r.DBIn
 		"parser": parser,
 	}
 	lbinsert := r.DBInsert{
-		Table: r.BALANCER,
+		Table: BALANCER,
 		Data:  &lbfiles,
 	}
 	ret = append(ret, lbinsert)
