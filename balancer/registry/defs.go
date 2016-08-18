@@ -1,50 +1,43 @@
-package registry
+package lbreg
 
 import (
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/grpclog"
-
-	pb "github.com/open-lambda/load-balancer/balancer/registry/regproto"
-	r "gopkg.in/dancannon/gorethink.v2"
+	r "github.com/open-lambda/code-registry/registry"
 )
 
 const (
-	PROTO    = "proto"
-	HANDLER  = "handler"
-	SERVER   = "server"
-	BALANCER = "balancer"
+	CHUNK_SIZE = 1024
+	DATABASE   = "lbregistry"
+	BALANCER   = "balancer"
+	SERVER     = "server"
+	PROTO      = "proto"
+	HANDLER    = "handler"
+	PB         = "pb"
+	PARSER     = "parser"
+	SPORT      = 10000
 )
 
 type PushClient struct {
-	ServerAddr string
-	ChunkSize  int
-	Conn       pb.RegistryClient
+	Client *r.PushClient
 }
 
-type PushServer struct {
-	Port      int
-	ChunkSize int
-	Conn      *r.Session // sessions are thread safe?
+type LBPullClient struct {
+	Client *r.PullClient
 }
 
-type PullClient struct {
-	Type string
-	Conn *r.Session
+type LBFiles struct {
+	Parser []byte
+}
+
+type ServerPullClient struct {
+	Client *r.PullClient
 }
 
 type ServerFiles struct {
-	Name    string `gorethink:"id,omitempty"`
-	Handler []byte `gorethink:"handler"`
-	PB      []byte `gorethink:"pb"`
+	Handler []byte
+	PB      []byte
 }
 
-type BalancerFiles struct {
-	Name   string `gorethink:"id,omitempty"`
-	Parser []byte `gorethink:"parser"`
-}
-
-func grpcCheck(err error) {
-	if err != nil {
-		grpclog.Fatal(grpc.ErrorDesc(err))
-	}
+type PushClientFiles struct {
+	Handler string
+	Proto   string
 }
