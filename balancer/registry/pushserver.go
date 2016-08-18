@@ -9,19 +9,19 @@ type LBFileProcessor struct{}
 
 func (p LBFileProcessor) Process(name string, files map[string][]byte) ([]r.DBInsert, error) {
 	ret := make([]r.DBInsert, 0)
-	pb, err := codegen.GenPB(files[r.PROTO], name)
+	pb, err := codegen.GenPB(files[PROTO], name)
 	if err != nil {
 		return ret, err
 	}
 
-	parser, err := codegen.GenParser(name, files[r.PROTO])
+	parser, err := codegen.GenParser(name, files[PROTO])
 	if err != nil {
 		return ret, err
 	}
 
 	sfiles := map[string]interface{}{
 		"id":      name,
-		"handler": files[r.HANDLER],
+		"handler": files[HANDLER],
 		"pb":      pb,
 	}
 	sinsert := r.DBInsert{
