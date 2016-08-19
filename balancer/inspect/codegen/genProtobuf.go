@@ -36,9 +36,9 @@ func genPB(dir, protofile, name string) ([]byte, error) {
 
 func writeProto(file []byte, dir, name string) (string, error) {
 	protofile := filepath.Join(dir, fmt.Sprintf("%s.proto", name))
-	n := bytes.IndexByte(file, 0)
+	//n := bytes.IndexByte(file, 0)
 
-	err := ioutil.WriteFile(protofile, file[:n], 0644)
+	err := ioutil.WriteFile(protofile, file, 0644)
 	if err != nil {
 		return "", err
 	}
@@ -46,7 +46,7 @@ func writeProto(file []byte, dir, name string) (string, error) {
 	return protofile, nil
 }
 
-func Generate(file []byte, name string) ([]byte, error) {
+func GenPB(file []byte, name string) ([]byte, error) {
 	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 	if err != nil {
 		return nil, err
