@@ -41,7 +41,7 @@ func main() {
 		go server.RunServer(conf.Servers[i])
 	}
 
-	chooser := serverPick.NewFirstTwo(conf.Servers)
+	chooser := serverPick.NewRandPicker(conf.Servers)
 	lb := new(balancer.LoadBalancer)
 	lb.Init(conf.LBAddr, chooser, 5)
 	go lb.Run()

@@ -13,6 +13,7 @@ import (
 type Config struct {
 	Servers []string
 	LBPort  string
+    Consumers int
 }
 
 func readConfig(filename string) *Config {
@@ -34,7 +35,7 @@ func readConfig(filename string) *Config {
 
 func main() {
 	conf := readConfig("balancer.conf")
-	chooser := serverPick.NewFirstTwo(conf.Servers)
+	chooser := serverPick.NewRandPicker(conf.Servers)
 
 	lb := new(balancer.LoadBalancer)
 	lb.Init(fmt.Sprintf(":%s", conf.LBPort), chooser, conf.Consumers)

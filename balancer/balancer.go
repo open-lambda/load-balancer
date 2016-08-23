@@ -2,7 +2,6 @@ package balancer
 
 import (
 	"bytes"
-	"container/list"
 	"io"
 	"net"
 
@@ -43,13 +42,14 @@ func (lb *LoadBalancer) HandleConn(clientconn *net.TCPConn) {
 		name := stream.Method()
 		test.GetArgs(buf.Bytes())
 
+        args := 8
 		// Make decision about which backend(s) to connect to
-		servers, err := lb.Chooser.ChooseServers(name, *list.New())
+		server, err := lb.Chooser.ChooseServer(name, args)
 		if err != nil {
 			panic(err)
 		}
 
-		serveraddr, err := net.ResolveTCPAddr("tcp", servers[0])
+		serveraddr, err := net.ResolveTCPAddr("tcp", server)
 		if err != nil {
 			panic(err)
 		}

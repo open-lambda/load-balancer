@@ -1,31 +1,13 @@
 package serverPick
 
 import (
-	"container/list"
 	"math/rand"
 	"time"
 )
 
 type ServerPicker interface {
-	ChooseServers(name string, params list.List) (servers []string, err error)
-	RegisterTimes(servers []string, times []float64)
-}
-
-// Always picks first two servers
-type FirstTwo struct {
-	servers []string
-}
-
-func NewFirstTwo(servers []string) FirstTwo {
-	return *&FirstTwo{servers: servers}
-}
-
-func (ft FirstTwo) ChooseServers(name string, params list.List) (servers []string, err error) {
-	return []string{ft.servers[0], ft.servers[1]}, nil
-}
-
-func (ft FirstTwo) RegisterTimes(servers []string, times []float64) {
-	return
+	ChooseServer(name string, args interface{}) (server string, err error)
+	RegisterTime(time float64)
 }
 
 // Picks only one server randomly
@@ -39,11 +21,11 @@ func NewRandPicker(servers []string) RandPicker {
 	return *&RandPicker{servers: servers, rg: *rand.New(src)}
 }
 
-func (rp RandPicker) ChooseServers(name string, params list.List) (servers []string, err error) {
+func (rp RandPicker) ChooseServer(name string, args interface{}) (server string, err error) {
 	index := rp.rg.Intn(len(rp.servers))
-	return []string{rp.servers[index]}, nil
+	return rp.servers[index], nil
 }
 
-func (rp RandPicker) RegisterTimes(servers []string, times []float64) {
+func (rp RandPicker) RegisterTime(time float64) {
 	return
 }
